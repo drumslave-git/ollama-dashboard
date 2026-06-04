@@ -10,19 +10,9 @@ interface Props {
   gpuLoading: boolean;
 }
 
-const SOURCE_LABEL: Record<GpuStats["source"], string> = {
-  "ollama-info": "Ollama",
-  "nvidia-smi": "nvidia-smi",
-  env: ".env",
-  "models-only": "loaded models",
-};
-
 export function VramSummary({ models, gpu, gpuError, gpuLoading }: Props) {
   const total = gpu?.totalVram ?? null;
-  const used =
-    total != null
-      ? (gpu?.usedVram ?? gpu?.usedByModels ?? 0)
-      : (gpu?.usedByModels ?? 0);
+  const used = gpu?.usedVram ?? gpu?.usedByModels ?? 0;
   const free = gpu?.freeVram ?? null;
   const usedPct = total != null ? vramUsedPercent(used, total) : 0;
 
@@ -48,35 +38,16 @@ export function VramSummary({ models, gpu, gpuError, gpuLoading }: Props) {
               {formatBytes(used)} / {formatBytes(total)}
             </span>
             {free != null && <span>Available {formatBytes(free)}</span>}
-            {gpu && (
-              <span className="vram-source">via {SOURCE_LABEL[gpu.source]}</span>
-            )}
           </div>
         </>
       ) : (
         <>
           <div className="label">
             <span>VRAM in loaded models</span>
-            <span className="value">
-              {used > 0 ? formatBytes(used) : "—"}
-            </span>
+            <span className="value">{used > 0 ? formatBytes(used) : "—"}</span>
           </div>
           {gpu?.note && <p className="vram-note">{gpu.note}</p>}
         </>
-      )}
-
-      {gpu && gpu.devices.length > 1 && (
-        <ul className="gpu-device-list">
-          {gpu.devices.map((d) => (
-            <li key={d.name}>
-              <span className="gpu-name">{d.name}</span>
-              <span>
-                {vramUsedPercent(d.used, d.total)}% used ({formatBytes(d.used)} /{" "}
-                {formatBytes(d.total)})
-              </span>
-            </li>
-          ))}
-        </ul>
       )}
 
       {models.length === 0 && total == null && !gpu?.note && (

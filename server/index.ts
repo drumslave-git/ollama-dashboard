@@ -1,21 +1,20 @@
 import express from "express";
-import { createProxyMiddleware } from "http-proxy-middleware";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { envNumber, loadProjectEnv } from "./env.js";
 import { getGpuStats } from "./gpu.js";
+import { ollamaProxy } from "./ollama-proxy.js";
 
 loadProjectEnv();
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const DASHBOARD_PORT = envNumber("PORT", 3000);
+const PORT = envNumber("PORT", 3000);
 const PROXY_PORT = envNumber("PROXY_PORT", 3001);
 const OLLAMA_HOST = process.env.OLLAMA_HOST || "http://localhost:11434";
-
+const isProduction = process.env.NODE_ENV === "production";
 const clientDir = path.join(__dirname, "../client");
-const serveClient = fs.existsSync(path.join(clientDir, "index.html"));
-const listenPort = serveClient ? DASHBOARD_PORT : PROXY_PORT;
+const hasBuild = fs.existsSync(path.join(clientDir, "index.html"));
 
 const app = express();
 
@@ -33,30 +32,26 @@ app.get("/api/dashboard/gpu", async (_req, res) => {
   }
 });
 
-// Mounting at "/api" strips that prefix; Ollama expects /api/ps, not /ps.
-app.use(
-  createProxyMiddleware({
-    target: OLLAMA_HOST,
-    changeOrigin: true,
-    pathFilter: (pathname) =>
-      pathname.startsWith("/api") && !pathname.startsWith("/api/dashboard"),
-    proxyTimeout: 0,
-    timeout: 0,
-  }),
-);
+app.use(ollamaProxy(OLLAMA_HOST));
 
-if (serveClient) {
+if (isProduction) {
+  if (!hasBuild) {
+    console.error("Missing dist/client — run npm run build first.");
+    process.exit(1);
+  }
   app.use(express.static(clientDir));
   app.get(/^(?!\/api).*/, (_req, res) => {
     res.sendFile(path.join(clientDir, "index.html"));
   });
 }
 
-app.listen(listenPort, () => {
-  if (serveClient) {
-    console.log(`Ollama Dashboard at http://localhost:${DASHBOARD_PORT}`);
+const listenPort = isProduction ? PORT : PROXY_PORT;
+
+app.listen(listenPort, "0.0.0.0", () => {
+  if (isProduction) {
+    console.log(`Ollama Dashboard at http://localhost:${PORT}`);
   } else {
-    console.log(`Ollama API proxy at http://localhost:${PROXY_PORT}`);
+    console.log(`API proxy at http://localhost:${PROXY_PORT}`);
   }
   console.log(`Proxying Ollama API at ${OLLAMA_HOST}`);
 });

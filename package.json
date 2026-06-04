@@ -4,16 +4,15 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "concurrently -n server,client -c blue,green \"tsx watch server/index.ts\" \"vite\"",
+    "dev": "concurrently -n server,client -c blue,green \"cross-env NODE_ENV=development tsx watch server/index.ts\" \"vite\"",
     "build": "tsc -p tsconfig.server.json && vite build",
-    "start": "node dist/server/index.js",
+    "start": "cross-env NODE_ENV=production node dist/server/index.js",
     "preview": "npm run build && npm run start",
     "typecheck": "tsc -p tsconfig.app.json --noEmit && tsc -p tsconfig.server.json --noEmit"
   },
   "dependencies": {
     "dotenv": "^16.5.0",
     "express": "^5.1.0",
-    "http-proxy-middleware": "^3.0.5",
     "react": "^19.1.0",
     "react-dom": "^19.1.0"
   },
@@ -24,6 +23,7 @@
     "@types/react-dom": "^19.1.5",
     "@vitejs/plugin-react": "^4.5.2",
     "concurrently": "^9.1.2",
+    "cross-env": "^7.0.3",
     "tsx": "^4.19.4",
     "typescript": "^5.8.3",
     "vite": "^6.3.5"
