@@ -1,3 +1,5 @@
+import type { PullProgress } from "../types/ollama";
+
 export function formatBytes(bytes: number): string {
   if (bytes === 0) return "0 B";
   const units = ["B", "KB", "MB", "GB", "TB"];
@@ -36,6 +38,14 @@ export function displayValue(
 export function displayList(items: string[] | null | undefined): string {
   if (!items?.length) return "—";
   return items.join(", ");
+}
+
+export function pullStatusLabel(progress: PullProgress | null): string | null {
+  if (!progress) return null;
+  const status = progress.status?.trim();
+  if (status) return status;
+  if (progress.total != null && progress.completed != null) return "downloading";
+  return "preparing…";
 }
 
 export function shortDigest(digest: string, head = 12, tail = 8): string {

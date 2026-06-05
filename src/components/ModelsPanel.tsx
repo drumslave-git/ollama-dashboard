@@ -4,6 +4,7 @@ import {
   displayList,
   displayValue,
   formatBytes,
+  pullStatusLabel,
   shortDigest,
 } from "../lib/format";
 import type { LocalModel, PullProgress } from "../types/ollama";
@@ -97,8 +98,11 @@ export function ModelsPanel({ models, onRefresh }: Props) {
     onRefresh();
   };
 
+  const statusLabel = pull ? pullStatusLabel(pull.progress) : null;
   const downloadPct =
-    pull?.progress?.total && pull.progress.completed != null
+    pull?.progress?.total != null &&
+    pull.progress.total > 0 &&
+    pull.progress.completed != null
       ? Math.round((pull.progress.completed / pull.progress.total) * 100)
       : null;
 
@@ -143,7 +147,7 @@ export function ModelsPanel({ models, onRefresh }: Props) {
         <div className="progress-panel">
           <div className="status">
             {pull.target}
-            {pull.progress ? `: ${pull.progress.status}` : ""}
+            {statusLabel ? `: ${statusLabel}` : ""}
           </div>
           {downloadPct != null && (
             <>
