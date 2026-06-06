@@ -3,6 +3,8 @@ services:
     build: .
     ports:
       - "${PORT:-3000}:3000"
+    networks:
+      - traefik
     environment:
       PORT: "3000"
       OLLAMA_HOST: ${OLLAMA_HOST:-http://host.docker.internal:11434}
@@ -23,3 +25,8 @@ services:
       - "homepage.name=Ollama Dashboard"
       - "homepage.icon="
       - "homepage.href=https://${TRAEFIK_HOST:-ollama-dashboard.example.com}"
+
+networks:
+  traefik:
+    external: true
+    name: "${TRAEFIK_DOCKER_NETWORK:-proxy}"
