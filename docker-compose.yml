@@ -10,3 +10,16 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     restart: unless-stopped
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=${TRAEFIK_DOCKER_NETWORK:-proxy}"
+      - "traefik.http.routers.ollama-dashboard.rule=Host(`${TRAEFIK_HOST:-ollama-dashboard.example.com}`)"
+      - "traefik.http.routers.ollama-dashboard.entrypoints=websecure"
+      - "traefik.http.routers.ollama-dashboard.tls=true"
+      - "traefik.http.routers.ollama-dashboard.tls.certresolver=cloudflare"
+      - "traefik.http.services.ollama-dashboard.loadbalancer.server.port=${TRAEFIK_SERVICE_PORT:-3000}"
+
+      - "homepage.group=${HOMEPAGE_GROUP:-AI}"
+      - "homepage.name=Ollama Dashboard"
+      - "homepage.icon="
+      - "homepage.href=https://${TRAEFIK_HOST:-ollama-dashboard.example.com}"
