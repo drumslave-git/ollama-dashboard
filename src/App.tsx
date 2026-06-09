@@ -22,6 +22,11 @@ export default function App() {
     void local.refresh();
   }, [local]);
 
+  const refreshRunning = useCallback(() => {
+    void running.refresh();
+    void gpu.refresh();
+  }, [running, gpu]);
+
   useEffect(() => {
     fetchVersion()
       .then((v) => {
@@ -72,6 +77,7 @@ export default function App() {
             <ActiveModels
               models={activeModels}
               totalVram={gpu.data?.totalVram ?? null}
+              onRefresh={refreshRunning}
             />
           )}
         </section>

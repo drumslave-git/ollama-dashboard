@@ -1,3 +1,5 @@
+import { useCallback, useState } from "react";
+import { unloadModel } from "../api/ollama";
 import type { RunningModel } from "../types/ollama";
 import { formatBytes, formatRelativeTime, vramUsedPercent } from "../lib/format";
 import { VramBar } from "./VramBar";
@@ -5,9 +7,26 @@ import { VramBar } from "./VramBar";
 interface Props {
   models: RunningModel[];
   totalVram: number | null;
+  onRefresh: () => void;
 }
 
-export function ActiveModels({ models, totalVram }: Props) {
+export function ActiveModels({ models, totalVram, onRefresh }: Props) {
+  const [unloading, setUnloading] = useState<string | null>(null);
+
+  const runUnload = useCallback(
+    async (name: string) => {
+      setUnloading(name);
+      try {
+        await unloadModel(name);
+        onRefresh();
+      } catch (err) {
+        alert(err instanceof Error ? err.message : "Unload failed");
+      } finally {
+        setUnloading(null);
+      }
+    },
+    [onRefresh],
+  );
   if (models.length === 0) {
     return <p className="empty">No models loaded in memory.</p>;
   }
@@ -22,9 +41,21 @@ export function ActiveModels({ models, totalVram }: Props) {
             ? vramUsedPercent(vram, totalVram)
             : null;
 
+        const busy = unloading === m.model;
+
         return (
           <li key={m.model} className="model-item">
-            <div className="name">{m.name}</div>
+            <div className="model-item-header">
+              <div className="name">{m.name}</div>
+              <button
+                type="button"
+                className="btn-secondary btn-sm"
+                onClick={() => void runUnload(m.model)}
+                disabled={unloading !== null}
+              >
+                {busy ? "Unloading…" : "Unload"}
+              </button>
+            </div>
             <div className="meta">
               <span>Size {formatBytes(m.size)}</span>
               {onGpu ? (

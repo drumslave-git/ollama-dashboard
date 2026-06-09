@@ -231,6 +231,13 @@ input:focus {
   border: 1px solid var(--border);
 }
 
+.model-item-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
 .model-item .name {
   font-family: var(--mono);
   font-weight: 600;
