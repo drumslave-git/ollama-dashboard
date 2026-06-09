@@ -1,5 +1,11 @@
-import { useCallback, useState } from "react";
-import { deleteModel, pullModel } from "../api/ollama";
+import { useCallback, useEffect, useState } from "react";
+import { fetchHfGgufFiles, type HfGgufFile } from "../api/huggingface";
+import {
+  deleteModel,
+  localModelId,
+  pullModel,
+  waitForLocalModel,
+} from "../api/ollama";
 import {
   displayList,
   displayValue,
@@ -7,6 +13,10 @@ import {
   pullStatusLabel,
   shortDigest,
 } from "../lib/format";
+import {
+  buildOllamaHfPullName,
+  parseHuggingFaceInput,
+} from "../lib/huggingface";
 import type { LocalModel, PullProgress } from "../types/ollama";
 
 interface Props {
@@ -22,13 +32,69 @@ type PullState = {
 
 export function ModelsPanel({ models, onRefresh }: Props) {
   const [tag, setTag] = useState("");
+  const [hfFiles, setHfFiles] = useState<HfGgufFile[]>([]);
+  const [hfQuant, setHfQuant] = useState("");
+  const [hfLookupError, setHfLookupError] = useState<string | null>(null);
+  const [hfLookupLoading, setHfLookupLoading] = useState(false);
   const [pull, setPull] = useState<PullState | null>(null);
+  const [pullNote, setPullNote] = useState<string | null>(null);
   const [bulkRunning, setBulkRunning] = useState(false);
   const [deleting, setDeleting] = useState<string | null>(null);
   const busy = pull !== null || bulkRunning || deleting !== null;
 
+  const hfRef = parseHuggingFaceInput(tag);
+
+  useEffect(() => {
+    if (!hfRef) {
+      setHfFiles([]);
+      setHfQuant("");
+      setHfLookupError(null);
+      setHfLookupLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      setHfLookupLoading(true);
+      setHfLookupError(null);
+      void fetchHfGgufFiles(hfRef.repo)
+        .then((files) => {
+          if (cancelled) return;
+          setHfFiles(files);
+          if (files.length === 0) {
+            setHfQuant("");
+            setHfLookupError("No GGUF files found in this repo.");
+            return;
+          }
+          const preferred =
+            files.find((f) => f.quant === hfRef.quant)?.quant ??
+            files.find((f) => f.quant === "Q4_K_M")?.quant ??
+            files.find((f) => f.quant === "Q4_K_S")?.quant ??
+            files[0].quant;
+          setHfQuant(preferred);
+        })
+        .catch((err) => {
+          if (cancelled) return;
+          setHfFiles([]);
+          setHfQuant("");
+          setHfLookupError(
+            err instanceof Error ? err.message : "Lookup failed",
+          );
+        })
+        .finally(() => {
+          if (!cancelled) setHfLookupLoading(false);
+        });
+    }, 400);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [hfRef?.repo, hfRef?.quant]);
+
   const runPull = useCallback(
     async (name: string) => {
+      setPullNote(null);
       setPull({ target: name, progress: null, error: null });
       try {
         await pullModel(name, (progress) => {
@@ -36,7 +102,15 @@ export function ModelsPanel({ models, onRefresh }: Props) {
             prev?.target === name ? { ...prev, progress } : prev,
           );
         });
+        const found = await waitForLocalModel(name);
         onRefresh();
+        if (found) {
+          setPullNote(`Added as ${localModelId(found)}`);
+        } else {
+          setPullNote(
+            "Pull finished but the model is not listed yet. Try Refresh — Hugging Face models appear as hf.co/user/repo:quant.",
+          );
+        }
       } catch (err) {
         setPull({
           target: name,
@@ -45,6 +119,7 @@ export function ModelsPanel({ models, onRefresh }: Props) {
         });
       } finally {
         setTimeout(() => setPull(null), 2500);
+        setTimeout(() => setPullNote(null), 10_000);
       }
     },
     [onRefresh],
@@ -68,25 +143,37 @@ export function ModelsPanel({ models, onRefresh }: Props) {
     [onRefresh],
   );
 
+  const resolvePullName = (input: string): string => {
+    const trimmed = input.trim();
+    const ref = parseHuggingFaceInput(trimmed);
+    if (!ref) return trimmed;
+    const quant = hfQuant || ref.quant;
+    return buildOllamaHfPullName(ref.repo, quant);
+  };
+
   const handlePull = () => {
     const trimmed = tag.trim();
     if (!trimmed) return;
-    void runPull(trimmed);
+    void runPull(resolvePullName(trimmed));
     setTag("");
+    setHfFiles([]);
+    setHfQuant("");
+    setHfLookupError(null);
   };
 
   const handleBulkUpdate = async () => {
     if (models.length === 0) return;
     setBulkRunning(true);
     for (const m of models) {
-      setPull({ target: m.name, progress: { status: "queued" }, error: null });
+      const id = localModelId(m);
+      setPull({ target: id, progress: { status: "queued" }, error: null });
       try {
-        await pullModel(m.name, (progress) => {
-          setPull({ target: m.name, progress, error: null });
+        await pullModel(id, (progress) => {
+          setPull({ target: id, progress, error: null });
         });
       } catch (err) {
         setPull({
-          target: m.name,
+          target: id,
           progress: null,
           error: err instanceof Error ? err.message : "Update failed",
         });
@@ -113,7 +200,7 @@ export function ModelsPanel({ models, onRefresh }: Props) {
       <div className="pull-form">
         <input
           type="text"
-          placeholder="Pull model by tag (e.g. llama3.2:latest)"
+          placeholder="Ollama tag or Hugging Face URL (e.g. llama3.2:latest)"
           value={tag}
           onChange={(e) => setTag(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && handlePull()}
@@ -123,25 +210,73 @@ export function ModelsPanel({ models, onRefresh }: Props) {
           type="button"
           className="btn-primary"
           onClick={handlePull}
-          disabled={busy || !tag.trim()}
+          disabled={
+            busy ||
+            !tag.trim() ||
+            (hfRef !== null && hfFiles.length > 0 && !hfQuant)
+          }
         >
           Pull
         </button>
       </div>
 
+      {hfRef && (
+        <div className="hf-pull-panel">
+          <div className="hf-pull-meta">
+            <span className="mono-cell">{buildOllamaHfPullName(hfRef.repo, hfQuant || hfRef.quant)}</span>
+            {hfLookupLoading && (
+              <span className="hf-pull-status">Looking up GGUF files…</span>
+            )}
+          </div>
+          {hfFiles.length > 0 && (
+            <label className="hf-quant-row">
+              <span>Quantization</span>
+              <select
+                value={hfQuant}
+                onChange={(e) => setHfQuant(e.target.value)}
+                disabled={busy}
+              >
+                {hfFiles.map((f) => (
+                  <option key={f.path} value={f.quant}>
+                    {f.quant} ({formatBytes(f.size)})
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+          {hfLookupError && (
+            <div className="hf-pull-error">{hfLookupError}</div>
+          )}
+        </div>
+      )}
+
       <div className="actions-row">
         <span style={{ color: "var(--muted)", fontSize: "0.85rem" }}>
           {models.length} downloaded
         </span>
-        <button
-          type="button"
-          className="btn-secondary"
-          onClick={() => void handleBulkUpdate()}
-          disabled={busy || models.length === 0}
-        >
-          Bulk update (re-pull all)
-        </button>
+        <div className="actions-row-buttons">
+          <button
+            type="button"
+            className="btn-secondary"
+            onClick={() => onRefresh()}
+            disabled={busy}
+          >
+            Refresh
+          </button>
+          <button
+            type="button"
+            className="btn-secondary"
+            onClick={() => void handleBulkUpdate()}
+            disabled={busy || models.length === 0}
+          >
+            Bulk update (re-pull all)
+          </button>
+        </div>
       </div>
+
+      {pullNote && (
+        <div className="pull-note">{pullNote}</div>
+      )}
 
       {pull && (
         <div className="progress-panel">
@@ -198,11 +333,12 @@ export function ModelsPanel({ models, onRefresh }: Props) {
             <tbody>
               {models.map((m) => {
                 const d = m.details;
-                const rowBusy = busy && (deleting === m.name || pull?.target === m.name);
+                const id = localModelId(m);
+                const rowBusy = busy && (deleting === id || pull?.target === id);
 
                 return (
-                  <tr key={m.digest}>
-                    <td className="name">{m.name}</td>
+                  <tr key={`${id}:${m.digest || m.modified_at}`}>
+                    <td className="name">{id}</td>
                     <td className="mono-cell">{m.model}</td>
                     <td className="mono-cell">{formatBytes(m.size)}</td>
                     <td className="capabilities-cell">
@@ -234,7 +370,7 @@ export function ModelsPanel({ models, onRefresh }: Props) {
                       <button
                         type="button"
                         className="btn-secondary btn-sm"
-                        onClick={() => void runPull(m.name)}
+                        onClick={() => void runPull(id)}
                         disabled={rowBusy || busy}
                       >
                         Update
@@ -242,10 +378,10 @@ export function ModelsPanel({ models, onRefresh }: Props) {
                       <button
                         type="button"
                         className="btn-danger btn-sm"
-                        onClick={() => void runDelete(m.name)}
+                        onClick={() => void runDelete(id)}
                         disabled={rowBusy || busy}
                       >
-                        {deleting === m.name ? "Deleting…" : "Delete"}
+                        {deleting === id ? "Deleting…" : "Delete"}
                       </button>
                     </td>
                   </tr>

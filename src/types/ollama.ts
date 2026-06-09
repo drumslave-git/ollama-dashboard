@@ -21,7 +21,7 @@ export interface RunningModel {
 }
 
 export interface LocalModel {
-  name: string;
+  name?: string;
   model: string;
   modified_at: string;
   size: number;

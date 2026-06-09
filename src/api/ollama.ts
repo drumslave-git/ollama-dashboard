@@ -1,5 +1,7 @@
+import { modelRefMatchesLocal } from "../lib/huggingface";
 import type { GpuStats } from "../types/gpu";
 import type {
+  LocalModel,
   PullProgress,
   PsResponse,
   TagsResponse,
@@ -12,6 +14,14 @@ async function parseJson<T>(res: Response): Promise<T> {
     throw new Error(text || `Request failed (${res.status})`);
   }
   return res.json() as Promise<T>;
+}
+
+export function localModelId(model: LocalModel): string {
+  return model.name?.trim() || model.model;
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 export async function fetchRunningModels(): Promise<PsResponse> {
@@ -50,12 +60,23 @@ export async function deleteModel(name: string): Promise<void> {
   const res = await fetch("/api/delete", {
     method: "DELETE",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ name }),
+    body: JSON.stringify({ model: name, name }),
   });
   if (!res.ok) {
     const text = await res.text().catch(() => "");
     throw new Error(text || `Delete failed (${res.status})`);
   }
+}
+
+function consumePullLine(
+  line: string,
+  onProgress: (progress: PullProgress) => void,
+): PullProgress | null {
+  const trimmed = line.trim();
+  if (!trimmed) return null;
+  const progress = JSON.parse(trimmed) as PullProgress;
+  onProgress(progress);
+  return progress;
 }
 
 export async function pullModel(
@@ -66,7 +87,7 @@ export async function pullModel(
   const res = await fetch("/api/pull", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ name, stream: true }),
+    body: JSON.stringify({ model: name, name, stream: true }),
     signal,
   });
 
@@ -82,6 +103,18 @@ export async function pullModel(
   const reader = res.body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
+  let lastStatus: string | undefined;
+
+  const handleLine = (line: string): boolean => {
+    try {
+      const progress = consumePullLine(line, onProgress);
+      if (!progress) return false;
+      lastStatus = progress.status;
+      return progress.status === "success";
+    } catch {
+      return false;
+    }
+  };
 
   while (true) {
     const { done, value } = await reader.read();
@@ -92,11 +125,31 @@ export async function pullModel(
     buffer = lines.pop() ?? "";
 
     for (const line of lines) {
-      const trimmed = line.trim();
-      if (!trimmed) continue;
-      const progress = JSON.parse(trimmed) as PullProgress;
-      onProgress(progress);
-      if (progress.status === "success") return;
+      if (handleLine(line)) return;
     }
   }
+
+  buffer += decoder.decode();
+  if (handleLine(buffer)) return;
+
+  throw new Error(lastStatus || "Pull finished without success");
+}
+
+export async function waitForLocalModel(
+  pullName: string,
+  options?: { attempts?: number; delayMs?: number },
+): Promise<LocalModel | null> {
+  const attempts = options?.attempts ?? 10;
+  const delayMs = options?.delayMs ?? 600;
+
+  for (let i = 0; i < attempts; i++) {
+    const { models } = await fetchLocalModels();
+    const found = models.find((m) =>
+      modelRefMatchesLocal(pullName, localModelId(m)),
+    );
+    if (found) return found;
+    if (i < attempts - 1) await sleep(delayMs);
+  }
+
+  return null;
 }

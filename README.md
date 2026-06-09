@@ -7,7 +7,8 @@ Web UI to monitor and manage a remote or local [Ollama](https://ollama.com) inst
 - **Active models** — models loaded in memory, with VRAM per model
 - **VRAM usage** — used / total / available (percentage bar when `GPU_VRAM_TOTAL_GB` is set)
 - **Models library**
-  - Pull by tag
+  - Pull by Ollama tag or Hugging Face GGUF repo (URL, `hf.co/…`, or `user/repo`)
+  - Quantization picker when a Hugging Face repo has multiple GGUF files
   - List downloaded models (full metadata from Ollama)
   - Update a single model (re-pull)
   - Bulk update (re-pull all)
@@ -33,6 +34,7 @@ Copy `.env.example` to `.env`:
 | `OLLAMA_HOST` | Base URL of Ollama (e.g. `http://localhost:11434` or `https://ollama.example.com`) |
 | `PROXY_PORT` | Dev only. Internal API proxy port (default `3001`). Not exposed in Docker. |
 | `GPU_VRAM_TOTAL_GB` | Total GPU VRAM in GiB. Required for the VRAM usage percentage bar. |
+| `HF_TOKEN` | Optional Hugging Face token for private GGUF repos |
 
 Example:
 
