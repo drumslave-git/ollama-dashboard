@@ -1,5 +1,5 @@
 import { useCallback, useState } from "react";
-import { unloadModel } from "../api/ollama";
+import { pinModel, unloadModel } from "../api/ollama";
 import type { RunningModel } from "../types/ollama";
 import { formatBytes, formatRelativeTime, vramUsedPercent } from "../lib/format";
 import { VramBar } from "./VramBar";
@@ -10,8 +10,13 @@ interface Props {
   onRefresh: () => void;
 }
 
+function isModelPinned(model: RunningModel): boolean {
+  return !model.expires_at;
+}
+
 export function ActiveModels({ models, totalVram, onRefresh }: Props) {
   const [unloading, setUnloading] = useState<string | null>(null);
+  const [pinning, setPinning] = useState<string | null>(null);
 
   const runUnload = useCallback(
     async (name: string) => {
@@ -23,6 +28,21 @@ export function ActiveModels({ models, totalVram, onRefresh }: Props) {
         alert(err instanceof Error ? err.message : "Unload failed");
       } finally {
         setUnloading(null);
+      }
+    },
+    [onRefresh],
+  );
+
+  const runPin = useCallback(
+    async (name: string) => {
+      setPinning(name);
+      try {
+        await pinModel(name);
+        onRefresh();
+      } catch (err) {
+        alert(err instanceof Error ? err.message : "Pin failed");
+      } finally {
+        setPinning(null);
       }
     },
     [onRefresh],
@@ -41,20 +61,38 @@ export function ActiveModels({ models, totalVram, onRefresh }: Props) {
             ? vramUsedPercent(vram, totalVram)
             : null;
 
-        const busy = unloading === m.model;
+        const pinned = isModelPinned(m);
+        const busy = unloading !== null || pinning !== null;
+        const unloadingThis = unloading === m.model;
+        const pinningThis = pinning === m.model;
 
         return (
           <li key={m.model} className="model-item">
             <div className="model-item-header">
               <div className="name">{m.name}</div>
-              <button
-                type="button"
-                className="btn-secondary btn-sm"
-                onClick={() => void runUnload(m.model)}
-                disabled={unloading !== null}
-              >
-                {busy ? "Unloading…" : "Unload"}
-              </button>
+              <div className="model-item-actions">
+                <button
+                  type="button"
+                  className={pinned ? "btn-primary btn-sm" : "btn-secondary btn-sm"}
+                  onClick={() => void runPin(m.model)}
+                  disabled={busy || pinned}
+                  title={
+                    pinned
+                      ? "Model is pinned in memory"
+                      : "Keep model loaded indefinitely (keep_alive: -1)"
+                  }
+                >
+                  {pinningThis ? "Pinning…" : pinned ? "Pinned" : "Pin"}
+                </button>
+                <button
+                  type="button"
+                  className="btn-secondary btn-sm"
+                  onClick={() => void runUnload(m.model)}
+                  disabled={busy}
+                >
+                  {unloadingThis ? "Unloading…" : "Unload"}
+                </button>
+              </div>
             </div>
             <div className="meta">
               <span>Size {formatBytes(m.size)}</span>
@@ -69,8 +107,12 @@ export function ActiveModels({ models, totalVram, onRefresh }: Props) {
               {m.context_length != null && (
                 <span>ctx {m.context_length.toLocaleString()}</span>
               )}
-              {m.expires_at && (
-                <span>expires {formatRelativeTime(m.expires_at)}</span>
+              {pinned ? (
+                <span>pinned</span>
+              ) : (
+                m.expires_at && (
+                  <span>expires {formatRelativeTime(m.expires_at)}</span>
+                )
               )}
               {m.details?.parameter_size && (
                 <span>{m.details.parameter_size}</span>

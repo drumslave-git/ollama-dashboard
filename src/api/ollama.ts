@@ -56,6 +56,18 @@ export async function unloadModel(name: string): Promise<void> {
   }
 }
 
+export async function pinModel(name: string): Promise<void> {
+  const res = await fetch("/api/generate", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ model: name, keep_alive: -1 }),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(text || `Pin failed (${res.status})`);
+  }
+}
+
 export async function deleteModel(name: string): Promise<void> {
   const res = await fetch("/api/delete", {
     method: "DELETE",

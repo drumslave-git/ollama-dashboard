@@ -238,6 +238,12 @@ input:focus {
   gap: 0.5rem;
 }
 
+.model-item-actions {
+  display: flex;
+  flex-shrink: 0;
+  gap: 0.35rem;
+}
+
 .model-item .name {
   font-family: var(--mono);
   font-weight: 600;
