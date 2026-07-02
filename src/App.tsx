@@ -43,61 +43,78 @@ export default function App() {
   const activeModels = running.data?.models ?? [];
 
   return (
-    <div className="app">
-      <header className="header">
-        <div>
+    <div className="app-shell">
+      <aside className="sidebar">
+        <div className="sidebar-brand">
           <h1>Ollama Dashboard</h1>
-          <p>Monitor active models, VRAM, and manage your library</p>
+          <p>Monitor and manage models</p>
         </div>
-        <span className={`badge ${connected ? "ok" : "err"}`}>
-          {connected
-            ? version
-              ? `Ollama ${version}`
-              : "Connected"
-            : "Disconnected"}
-        </span>
-      </header>
+        <nav className="sidebar-nav">
+          <a href="#overview">Overview</a>
+          <a href="#active-models">Active models</a>
+          <a href="#vram">VRAM</a>
+          <a href="#models">Models library</a>
+        </nav>
+        <div className="sidebar-footer">
+          <span className={`badge ${connected ? "ok" : "err"}`}>
+            {connected
+              ? version
+                ? `Ollama ${version}`
+                : "Connected"
+              : "Disconnected"}
+          </span>
+        </div>
+      </aside>
 
-      {(running.error || local.error) && (
-        <div className="error-banner">
-          {running.error && <div>Running models: {running.error}</div>}
-          {local.error && <div>Local models: {local.error}</div>}
-          <div style={{ marginTop: "0.35rem", color: "var(--muted)" }}>
-            Check that Ollama is running and OLLAMA_HOST is correct.
+      <div className="app">
+        <header className="header" id="overview">
+          <div>
+            <h2>Overview</h2>
+            <p>Monitor active models, VRAM, and manage your library</p>
           </div>
-        </div>
-      )}
+        </header>
 
-      <div className="grid grid-2">
-        <section className="card">
-          <h2>Active models</h2>
-          {running.loading && activeModels.length === 0 ? (
-            <p className="empty">Loading…</p>
-          ) : (
-            <ActiveModels
+        {(running.error || local.error) && (
+          <div className="error-banner">
+            {running.error && <div>Running models: {running.error}</div>}
+            {local.error && <div>Local models: {local.error}</div>}
+            <div style={{ marginTop: "0.35rem", color: "var(--muted)" }}>
+              Check that Ollama is running and OLLAMA_HOST is correct.
+            </div>
+          </div>
+        )}
+
+        <div className="grid grid-2">
+          <section className="card" id="active-models">
+            <h2>Active models</h2>
+            {running.loading && activeModels.length === 0 ? (
+              <p className="empty">Loading…</p>
+            ) : (
+              <ActiveModels
+                models={activeModels}
+                totalVram={gpu.data?.totalVram ?? null}
+                onRefresh={refreshRunning}
+              />
+            )}
+          </section>
+
+          <section className="card" id="vram">
+            <h2>VRAM</h2>
+            <VramSummary
               models={activeModels}
-              totalVram={gpu.data?.totalVram ?? null}
-              onRefresh={refreshRunning}
+              gpu={gpu.data}
+              gpuError={gpu.error}
+              gpuLoading={gpu.loading}
             />
-          )}
-        </section>
+          </section>
+        </div>
 
-        <section className="card">
-          <h2>VRAM</h2>
-          <VramSummary
-            models={activeModels}
-            gpu={gpu.data}
-            gpuError={gpu.error}
-            gpuLoading={gpu.loading}
+        <div className="models-section" id="models">
+          <ModelsPanel
+            models={local.data?.models ?? []}
+            onRefresh={refreshLocal}
           />
-        </section>
-      </div>
-
-      <div style={{ marginTop: "1.25rem" }}>
-        <ModelsPanel
-          models={local.data?.models ?? []}
-          onRefresh={refreshLocal}
-        />
+        </div>
       </div>
     </div>
   );

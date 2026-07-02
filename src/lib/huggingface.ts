@@ -37,9 +37,17 @@ export function parseHuggingFaceInput(input: string): HfRepoRef | null {
   const slash = trimmed.match(/^([A-Za-z0-9._-]+)\/([A-Za-z0-9._-]+)(?::(.+))?$/);
   if (slash && !trimmed.includes(" ")) {
     const [, user, repo, quant] = slash;
-    if (!/^(latest|main|master)$/i.test(repo)) {
-      return { repo: `${user}/${repo}`, quant };
+    if (/^(latest|main|master)$/i.test(repo)) {
+      return null;
     }
+    if (quant) {
+      if (looksLikeOllamaTag(quant) && !looksLikeGgufQuant(quant)) {
+        return null;
+      }
+    } else if (looksLikeOllamaNamespace(user)) {
+      return null;
+    }
+    return { repo: `${user}/${repo}`, quant };
   }
 
   return null;
@@ -65,6 +73,22 @@ const QUANT_SUFFIXES = [
   "F16",
   "FP16",
 ] as const;
+
+function looksLikeGgufQuant(tag: string): boolean {
+  const upper = tag.toUpperCase();
+  return QUANT_SUFFIXES.some((quant) => upper === quant);
+}
+
+function looksLikeOllamaTag(tag: string): boolean {
+  if (/^(latest|main|master|preview|beta|alpha)$/i.test(tag)) return true;
+  if (/^\d+(\.\d+)?b$/i.test(tag)) return true;
+  return false;
+}
+
+/** Short Ollama registry namespaces (e.g. x/flux2-klein), not HF org names. */
+function looksLikeOllamaNamespace(user: string): boolean {
+  return user.length <= 2;
+}
 
 /** Normalize model refs for comparison (HF URLs, hf.co paths, quant case). */
 export function normalizeOllamaModelRef(ref: string): string {
