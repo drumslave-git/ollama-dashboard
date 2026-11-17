@@ -48,7 +48,47 @@ export function pullStatusLabel(progress: PullProgress | null): string | null {
   return "preparing…";
 }
 
-export function shortDigest(digest: string, head = 12, tail = 8): string {
-  if (digest.length <= head + tail + 1) return digest;
-  return `${digest.slice(0, head)}…${digest.slice(-tail)}`;
+/** First 12 hex characters, the same ID `ollama list` shows. */
+export function shortDigest(digest: string, length = 12): string {
+  return digest.slice(0, length);
+}
+
+const dateTime = new Intl.DateTimeFormat(undefined, {
+  year: "numeric",
+  month: "short",
+  day: "numeric",
+  hour: "2-digit",
+  minute: "2-digit",
+});
+
+export function formatDateTime(iso: string): string {
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? "—" : dateTime.format(d);
+}
+
+const CAPABILITY_ORDER = [
+  "completion",
+  "embedding",
+  "insert",
+  "tools",
+  "thinking",
+  "vision",
+  "audio",
+];
+
+/** Capabilities in one fixed order, so rows compare at a glance. */
+export function sortCapabilities(items: string[] | null | undefined): string[] {
+  if (!items?.length) return [];
+  const rank = (c: string) => {
+    const i = CAPABILITY_ORDER.indexOf(c);
+    return i === -1 ? CAPABILITY_ORDER.length : i;
+  };
+  return [...items].sort((a, b) => rank(a) - rank(b) || a.localeCompare(b));
+}
+
+/** Split a model ref into its namespace (`hf.co/user/`) and the rest. */
+export function splitModelRef(ref: string): { prefix: string; rest: string } {
+  const i = ref.lastIndexOf("/");
+  if (i === -1) return { prefix: "", rest: ref };
+  return { prefix: ref.slice(0, i + 1), rest: ref.slice(i + 1) };
 }

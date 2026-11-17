@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   fetchGpuStats,
   fetchLocalModels,
@@ -9,10 +9,12 @@ import { ActiveModels } from "./components/ActiveModels";
 import { ModelsPanel } from "./components/ModelsPanel";
 import { VramSummary } from "./components/VramSummary";
 import { usePolling } from "./hooks/usePolling";
+import { modelColors } from "./lib/memoryMap";
 
 export default function App() {
   const [version, setVersion] = useState<string | null>(null);
   const [versionError, setVersionError] = useState(false);
+  const [focusModel, setFocusModel] = useState<string | null>(null);
 
   const running = usePolling(fetchRunningModels, 2000);
   const gpu = usePolling(fetchGpuStats, 2000);
@@ -40,7 +42,17 @@ export default function App() {
   }, []);
 
   const connected = !running.error && !versionError;
-  const activeModels = running.data?.models ?? [];
+  const activeModels = useMemo(
+    () => running.data?.models ?? [],
+    [running.data],
+  );
+  const colors = useMemo(() => modelColors(activeModels), [activeModels]);
+  const localCount = local.data?.models.length ?? null;
+
+  const summary =
+    running.data && localCount != null
+      ? `${activeModels.length} ${activeModels.length === 1 ? "model" : "models"} loaded · ${localCount} downloaded`
+      : null;
 
   return (
     <div className="app-shell">
@@ -53,10 +65,11 @@ export default function App() {
           <a href="#overview">Overview</a>
           <a href="#active-models">Active models</a>
           <a href="#vram">VRAM</a>
-          <a href="#models">Models library</a>
+          <a href="#models">Models</a>
         </nav>
         <div className="sidebar-footer">
-          <span className={`badge ${connected ? "ok" : "err"}`}>
+          <span className={`status ${connected ? "ok" : "err"}`}>
+            <span className="status-led" aria-hidden />
             {connected
               ? version
                 ? `Ollama ${version}`
@@ -66,42 +79,45 @@ export default function App() {
         </div>
       </aside>
 
-      <div className="app">
+      <main className="app">
         <header className="header" id="overview">
-          <div>
-            <h2>Overview</h2>
-            <p>Monitor active models, VRAM, and manage your library</p>
-          </div>
+          <h2>Overview</h2>
+          {summary && <p>{summary}</p>}
         </header>
 
         {(running.error || local.error) && (
-          <div className="error-banner">
+          <div className="error-banner" role="alert">
             {running.error && <div>Running models: {running.error}</div>}
             {local.error && <div>Local models: {local.error}</div>}
-            <div style={{ marginTop: "0.35rem", color: "var(--muted)" }}>
-              Check that Ollama is running and OLLAMA_HOST is correct.
+            <div className="error-hint">
+              Check that Ollama is running and OLLAMA_HOST is correct
             </div>
           </div>
         )}
 
-        <div className="grid grid-2">
+        <div className="grid grid-split">
           <section className="card" id="active-models">
-            <h2>Active models</h2>
+            <div className="card-header">
+              <h2 className="card-title">Active models</h2>
+            </div>
             {running.loading && activeModels.length === 0 ? (
               <p className="empty">Loading…</p>
             ) : (
               <ActiveModels
                 models={activeModels}
                 totalVram={gpu.data?.totalVram ?? null}
+                colors={colors}
+                onFocusModel={setFocusModel}
                 onRefresh={refreshRunning}
               />
             )}
           </section>
 
-          <section className="card" id="vram">
-            <h2>VRAM</h2>
+          <section className="card card-vram" id="vram">
             <VramSummary
               models={activeModels}
+              colors={colors}
+              focusModel={focusModel}
               gpu={gpu.data}
               gpuError={gpu.error}
               gpuLoading={gpu.loading}
@@ -115,7 +131,7 @@ export default function App() {
             onRefresh={refreshLocal}
           />
         </div>
-      </div>
+      </main>
     </div>
   );
 }

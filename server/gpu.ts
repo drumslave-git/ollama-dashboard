@@ -39,6 +39,6 @@ export async function getGpuStats(ollamaHost: string): Promise<GpuStats> {
     freeVram: null,
     usedByModels,
     configured: false,
-    note: "Set GPU_VRAM_TOTAL_GB in .env to show VRAM usage percentage.",
+    note: "Set GPU_VRAM_TOTAL_GB in .env to see free VRAM and the memory map",
   };
 }

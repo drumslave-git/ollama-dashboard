@@ -7,17 +7,20 @@ import {
   waitForLocalModel,
 } from "../api/ollama";
 import {
-  displayList,
   displayValue,
   formatBytes,
+  formatDateTime,
   pullStatusLabel,
   shortDigest,
+  sortCapabilities,
+  splitModelRef,
 } from "../lib/format";
 import {
   buildOllamaHfPullName,
   parseHuggingFaceInput,
 } from "../lib/huggingface";
-import type { LocalModel, PullProgress } from "../types/ollama";
+import type { LocalModel, ModelDetails, PullProgress } from "../types/ollama";
+import { BlockBar } from "./BlockBar";
 
 interface Props {
   models: LocalModel[];
@@ -29,6 +32,23 @@ type PullState = {
   progress: PullProgress | null;
   error: string | null;
 };
+
+/** Model ref with its namespace (`hf.co/user/`) on a muted line above the name. */
+function ModelRef({ value }: { value: string }) {
+  const { prefix, rest } = splitModelRef(value);
+  return (
+    <>
+      {prefix && <span className="ref-prefix">{prefix}</span>}
+      {rest}
+    </>
+  );
+}
+
+function familyExtra(d: ModelDetails | undefined): string | null {
+  const families = d?.families ?? [];
+  const extra = families.filter((f) => f !== d?.family);
+  return extra.length > 0 ? extra.join(", ") : null;
+}
 
 export function ModelsPanel({ models, onRefresh }: Props) {
   const [tag, setTag] = useState("");
@@ -63,7 +83,7 @@ export function ModelsPanel({ models, onRefresh }: Props) {
           setHfFiles(files);
           if (files.length === 0) {
             setHfQuant("");
-            setHfLookupError("No GGUF files found in this repo.");
+            setHfLookupError("No GGUF files found in this repo");
             return;
           }
           const preferred =
@@ -195,16 +215,42 @@ export function ModelsPanel({ models, onRefresh }: Props) {
 
   return (
     <div className="card">
-      <h2>Models</h2>
+      <div className="card-header models-header">
+        <div className="card-heading">
+          <h2 className="card-title">Models</h2>
+          <span className="card-meta">{models.length} downloaded</span>
+        </div>
+        <div className="actions-row-buttons">
+          <button
+            type="button"
+            className="btn-secondary btn-sm"
+            onClick={() => onRefresh()}
+            disabled={busy}
+          >
+            Refresh
+          </button>
+          <button
+            type="button"
+            className="btn-secondary btn-sm"
+            onClick={() => void handleBulkUpdate()}
+            disabled={busy || models.length === 0}
+            title="Re-pull every downloaded model"
+          >
+            Update all
+          </button>
+        </div>
+      </div>
 
       <div className="pull-form">
         <input
           type="text"
-          placeholder="Ollama tag or Hugging Face URL (e.g. llama3.2:latest)"
+          placeholder="Ollama tag or Hugging Face repo"
+          aria-label="Model to pull"
           value={tag}
           onChange={(e) => setTag(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && handlePull()}
           disabled={busy}
+          spellCheck={false}
         />
         <button
           type="button"
@@ -223,7 +269,9 @@ export function ModelsPanel({ models, onRefresh }: Props) {
       {hfRef && (
         <div className="hf-pull-panel">
           <div className="hf-pull-meta">
-            <span className="mono-cell">{buildOllamaHfPullName(hfRef.repo, hfQuant || hfRef.quant)}</span>
+            <span className="mono">
+              {buildOllamaHfPullName(hfRef.repo, hfQuant || hfRef.quant)}
+            </span>
             {hfLookupLoading && (
               <span className="hf-pull-status">Looking up GGUF files…</span>
             )}
@@ -238,7 +286,7 @@ export function ModelsPanel({ models, onRefresh }: Props) {
               >
                 {hfFiles.map((f) => (
                   <option key={f.path} value={f.quant}>
-                    {f.quant} ({formatBytes(f.size)})
+                    {f.quant} · {formatBytes(f.size)}
                   </option>
                 ))}
               </select>
@@ -250,84 +298,51 @@ export function ModelsPanel({ models, onRefresh }: Props) {
         </div>
       )}
 
-      <div className="actions-row">
-        <span style={{ color: "var(--muted)", fontSize: "0.85rem" }}>
-          {models.length} downloaded
-        </span>
-        <div className="actions-row-buttons">
-          <button
-            type="button"
-            className="btn-secondary"
-            onClick={() => onRefresh()}
-            disabled={busy}
-          >
-            Refresh
-          </button>
-          <button
-            type="button"
-            className="btn-secondary"
-            onClick={() => void handleBulkUpdate()}
-            disabled={busy || models.length === 0}
-          >
-            Bulk update (re-pull all)
-          </button>
-        </div>
-      </div>
-
-      {pullNote && (
-        <div className="pull-note">{pullNote}</div>
-      )}
+      {pullNote && <div className="pull-note">{pullNote}</div>}
 
       {pull && (
         <div className="progress-panel">
-          <div className="status">
-            {pull.target}
-            {statusLabel ? `: ${statusLabel}` : ""}
+          <div className="progress-head">
+            <span className="progress-target">
+              {pull.target}
+              {statusLabel && (
+                <span className="progress-status"> · {statusLabel}</span>
+              )}
+            </span>
+            {downloadPct != null && (
+              <span className="progress-figures">
+                {downloadPct}% · {formatBytes(pull.progress!.completed ?? 0)} of{" "}
+                {formatBytes(pull.progress!.total ?? 0)}
+              </span>
+            )}
           </div>
-          {downloadPct != null && (
-            <>
-              <div className="label" style={{ fontSize: "0.75rem" }}>
-                <span>{downloadPct}%</span>
-                <span>
-                  {formatBytes(pull.progress!.completed ?? 0)} /{" "}
-                  {formatBytes(pull.progress!.total ?? 0)}
-                </span>
-              </div>
-              <div className="bar-track">
-                <div className="bar-fill" style={{ width: `${downloadPct}%` }} />
-              </div>
-            </>
-          )}
-          {pull.error && (
-            <div style={{ color: "var(--danger)", marginTop: "0.5rem" }}>
-              {pull.error}
-            </div>
-          )}
+          {downloadPct != null && <BlockBar percent={downloadPct} />}
+          {pull.error && <div className="progress-error">{pull.error}</div>}
         </div>
       )}
 
       {models.length === 0 ? (
-        <p className="empty">No local models. Pull one above.</p>
+        <p className="empty models-empty">No models downloaded yet</p>
       ) : (
-        <div className="table-wrap models-table-wrap">
+        <div className="table-wrap">
           <table className="models-table">
             <thead>
               <tr>
                 <th>Name</th>
-                <th>Model</th>
-                <th>Size</th>
+                <th className="num">Size</th>
                 <th>Capabilities</th>
                 <th>Modified</th>
                 <th>Digest</th>
                 <th>Format</th>
                 <th>Family</th>
-                <th>Families</th>
-                <th>Params</th>
+                <th className="num">Params</th>
                 <th>Quant</th>
                 <th>Parent</th>
-                <th>Context</th>
-                <th>Embedding</th>
-                <th className="col-actions">Actions</th>
+                <th className="num">Context</th>
+                <th className="num">Embedding</th>
+                <th className="col-actions">
+                  <span className="sr-only">Actions</span>
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -335,54 +350,68 @@ export function ModelsPanel({ models, onRefresh }: Props) {
                 const d = m.details;
                 const id = localModelId(m);
                 const rowBusy = busy && (deleting === id || pull?.target === id);
+                const caps = sortCapabilities(m.capabilities);
+                const families = familyExtra(d);
 
                 return (
                   <tr key={`${id}:${m.digest || m.modified_at}`}>
-                    <td className="name">{id}</td>
-                    <td className="mono-cell">{m.model}</td>
-                    <td className="mono-cell">{formatBytes(m.size)}</td>
+                    <td className="name-cell">
+                      <ModelRef value={id} />
+                      {m.model !== id && (
+                        <div className="cell-sub">
+                          <ModelRef value={m.model} />
+                        </div>
+                      )}
+                    </td>
+                    <td className="num mono">{formatBytes(m.size)}</td>
                     <td className="capabilities-cell">
-                      {displayList(m.capabilities)}
+                      {caps.length > 0 ? caps.join(", ") : <Empty />}
                     </td>
-                    <td className="mono-cell">
-                      {new Date(m.modified_at).toLocaleString()}
+                    <td className="mono" title={m.modified_at}>
+                      {formatDateTime(m.modified_at)}
                     </td>
-                    <td className="mono-cell digest" title={m.digest}>
+                    <td className="mono digest" title={m.digest}>
                       {shortDigest(m.digest)}
                     </td>
-                    <td>{displayValue(d?.format)}</td>
-                    <td>{displayValue(d?.family)}</td>
-                    <td className="mono-cell">{displayList(d?.families ?? undefined)}</td>
-                    <td>{displayValue(d?.parameter_size)}</td>
-                    <td>{displayValue(d?.quantization_level)}</td>
-                    <td className="mono-cell">{displayValue(d?.parent_model)}</td>
-                    <td className="mono-cell">
+                    <td>{d?.format || <Empty />}</td>
+                    <td>
+                      {d?.family || <Empty />}
+                      {families && <div className="cell-sub">{families}</div>}
+                    </td>
+                    <td className="num mono">{d?.parameter_size || <Empty />}</td>
+                    <td className="mono">{d?.quantization_level || <Empty />}</td>
+                    <td className="mono">
+                      {d?.parent_model ? <ModelRef value={d.parent_model} /> : <Empty />}
+                    </td>
+                    <td className="num mono">
                       {d?.context_length != null
                         ? d.context_length.toLocaleString()
-                        : "—"}
+                        : <Empty />}
                     </td>
-                    <td className="mono-cell">
+                    <td className="num mono">
                       {d?.embedding_length != null
                         ? d.embedding_length.toLocaleString()
-                        : "—"}
+                        : <Empty />}
                     </td>
-                    <td className="col-actions actions-cell">
-                      <button
-                        type="button"
-                        className="btn-secondary btn-sm"
-                        onClick={() => void runPull(id)}
-                        disabled={rowBusy || busy}
-                      >
-                        Update
-                      </button>
-                      <button
-                        type="button"
-                        className="btn-danger btn-sm"
-                        onClick={() => void runDelete(id)}
-                        disabled={rowBusy || busy}
-                      >
-                        {deleting === id ? "Deleting…" : "Delete"}
-                      </button>
+                    <td className="col-actions">
+                      <div className="row-actions">
+                        <button
+                          type="button"
+                          className="btn-secondary btn-sm"
+                          onClick={() => void runPull(id)}
+                          disabled={rowBusy || busy}
+                        >
+                          Update
+                        </button>
+                        <button
+                          type="button"
+                          className="btn-ghost-danger btn-sm"
+                          onClick={() => void runDelete(id)}
+                          disabled={rowBusy || busy}
+                        >
+                          {deleting === id ? "Deleting…" : "Delete"}
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 );
@@ -393,4 +422,8 @@ export function ModelsPanel({ models, onRefresh }: Props) {
       )}
     </div>
   );
+}
+
+function Empty() {
+  return <span className="cell-empty">{displayValue(null)}</span>;
 }

@@ -2,11 +2,12 @@ import { useCallback, useState } from "react";
 import { pinModel, unloadModel } from "../api/ollama";
 import type { RunningModel } from "../types/ollama";
 import { formatBytes, formatRelativeTime, vramUsedPercent } from "../lib/format";
-import { VramBar } from "./VramBar";
 
 interface Props {
   models: RunningModel[];
   totalVram: number | null;
+  colors: Map<string, string>;
+  onFocusModel: (model: string | null) => void;
   onRefresh: () => void;
 }
 
@@ -14,7 +15,13 @@ function isModelPinned(model: RunningModel): boolean {
   return !model.expires_at;
 }
 
-export function ActiveModels({ models, totalVram, onRefresh }: Props) {
+export function ActiveModels({
+  models,
+  totalVram,
+  colors,
+  onFocusModel,
+  onRefresh,
+}: Props) {
   const [unloading, setUnloading] = useState<string | null>(null);
   const [pinning, setPinning] = useState<string | null>(null);
 
@@ -23,6 +30,7 @@ export function ActiveModels({ models, totalVram, onRefresh }: Props) {
       setUnloading(name);
       try {
         await unloadModel(name);
+        onFocusModel(null);
         onRefresh();
       } catch (err) {
         alert(err instanceof Error ? err.message : "Unload failed");
@@ -30,7 +38,7 @@ export function ActiveModels({ models, totalVram, onRefresh }: Props) {
         setUnloading(null);
       }
     },
-    [onRefresh],
+    [onFocusModel, onRefresh],
   );
 
   const runPin = useCallback(
@@ -47,8 +55,9 @@ export function ActiveModels({ models, totalVram, onRefresh }: Props) {
     },
     [onRefresh],
   );
+
   if (models.length === 0) {
-    return <p className="empty">No models loaded in memory.</p>;
+    return <p className="empty">No models in memory</p>;
   }
 
   return (
@@ -63,64 +72,84 @@ export function ActiveModels({ models, totalVram, onRefresh }: Props) {
 
         const pinned = isModelPinned(m);
         const busy = unloading !== null || pinning !== null;
-        const unloadingThis = unloading === m.model;
-        const pinningThis = pinning === m.model;
+        const color = colors.get(m.model);
 
         return (
-          <li key={m.model} className="model-item">
+          <li
+            key={m.model}
+            className="model-item"
+            onMouseEnter={() => onGpu && onFocusModel(m.model)}
+            onMouseLeave={() => onFocusModel(null)}
+          >
             <div className="model-item-header">
-              <div className="name">{m.name}</div>
+              <span
+                className={onGpu ? "model-chip" : "model-chip cpu"}
+                style={color ? { background: color } : undefined}
+                aria-hidden
+              />
+              <div className="model-name" title={m.name}>
+                {m.name}
+              </div>
               <div className="model-item-actions">
-                <button
-                  type="button"
-                  className={pinned ? "btn-primary btn-sm" : "btn-secondary btn-sm"}
-                  onClick={() => void runPin(m.model)}
-                  disabled={busy || pinned}
-                  title={
-                    pinned
-                      ? "Model is pinned in memory"
-                      : "Keep model loaded indefinitely (keep_alive: -1)"
-                  }
-                >
-                  {pinningThis ? "Pinning…" : pinned ? "Pinned" : "Pin"}
-                </button>
+                {!pinned && (
+                  <button
+                    type="button"
+                    className="btn-secondary btn-sm"
+                    onClick={() => void runPin(m.model)}
+                    disabled={busy}
+                    title="Keep model loaded indefinitely (keep_alive: -1)"
+                  >
+                    {pinning === m.model ? "Pinning…" : "Pin"}
+                  </button>
+                )}
                 <button
                   type="button"
                   className="btn-secondary btn-sm"
                   onClick={() => void runUnload(m.model)}
                   disabled={busy}
                 >
-                  {unloadingThis ? "Unloading…" : "Unload"}
+                  {unloading === m.model ? "Unloading…" : "Unload"}
                 </button>
               </div>
             </div>
-            <div className="meta">
-              <span>Size {formatBytes(m.size)}</span>
+            <dl className="model-meta">
               {onGpu ? (
-                <span>
-                  VRAM {formatBytes(vram)}
-                  {pct != null ? ` (${pct}% of GPU)` : ""}
-                </span>
+                <div>
+                  <dt>VRAM</dt>
+                  <dd>
+                    {formatBytes(vram)}
+                    {pct != null ? ` · ${pct}%` : ""}
+                  </dd>
+                </div>
               ) : (
-                <span>CPU / system memory</span>
+                <div>
+                  <dt>Memory</dt>
+                  <dd>{formatBytes(m.size)} in system RAM</dd>
+                </div>
               )}
               {m.context_length != null && (
-                <span>ctx {m.context_length.toLocaleString()}</span>
-              )}
-              {pinned ? (
-                <span>pinned</span>
-              ) : (
-                m.expires_at && (
-                  <span>expires {formatRelativeTime(m.expires_at)}</span>
-                )
+                <div>
+                  <dt>Context</dt>
+                  <dd>{m.context_length.toLocaleString()}</dd>
+                </div>
               )}
               {m.details?.parameter_size && (
-                <span>{m.details.parameter_size}</span>
+                <div>
+                  <dt>Params</dt>
+                  <dd>{m.details.parameter_size}</dd>
+                </div>
               )}
-            </div>
-            {pct != null && pct > 0 && (
-              <VramBar percent={pct} className="bar-track model-vram-bar" />
-            )}
+              {(pinned || m.expires_at) && (
+                <div>
+                  <dt>Unloads</dt>
+                  <dd>
+                    {pinned || !m.expires_at
+                      ? "never, pinned"
+                      : formatRelativeTime(m.expires_at)}
+                  </dd>
+                </div>
+              )}
+            </dl>
           </li>
         );
       })}
