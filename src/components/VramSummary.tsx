@@ -72,7 +72,7 @@ export function VramSummary({
     <>
       {header}
       <div className="vram-figure">
-        <span className="figure">{formatBytes(used)}</span>
+        <span className="figure">{used > 0 ? formatBytes(used) : "0 GB"}</span>
         <span className="figure-unit">of {formatBytes(total)}</span>
       </div>
       <div

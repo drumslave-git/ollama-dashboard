@@ -2,7 +2,6 @@
   color-scheme: dark;
 
   /* Graphite ramp */
-  --bg-deep: #0f0f10;
   --bg: #141415;
   --surface: #19191b;
   --surface-hover: #1c1c1e;
@@ -195,84 +194,18 @@ select {
   cursor: pointer;
 }
 
-/* Shell */
-
-.app-shell {
-  min-height: 100%;
-}
-
-.sidebar {
-  position: fixed;
-  top: 0;
-  left: 0;
-  z-index: 20;
-  display: flex;
-  flex-direction: column;
-  width: 240px;
-  height: 100vh;
-  padding: 24px 12px 20px;
-  background: var(--bg-deep);
-  border-right: 1px solid var(--hairline);
-  overflow-y: auto;
-}
-
-.sidebar-brand {
-  padding: 0 8px;
-}
-
-.sidebar-brand h1 {
-  margin: 0;
-  font-size: 16px;
-  line-height: 24px;
-  font-weight: 600;
-}
-
-.sidebar-brand p {
-  margin: 0;
-  color: var(--text-3);
-  font-size: 13px;
-  line-height: 20px;
-}
-
-.sidebar-nav {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  margin-top: 24px;
-}
-
-.sidebar-nav a {
-  display: flex;
-  align-items: center;
-  height: 32px;
-  padding: 0 8px;
-  border-radius: 6px;
-  color: var(--text-2);
-  text-decoration: none;
-  font-size: 14px;
-  transition:
-    background-color var(--fast) var(--ease),
-    color var(--fast) var(--ease);
-}
-
-.sidebar-nav a:hover {
-  background: var(--raised);
-  color: var(--text);
-}
-
-.sidebar-footer {
-  margin-top: auto;
-  padding: 16px 8px 0;
-}
+/* Shell: one page, so no navigation; name and status live in the header */
 
 .status {
   display: inline-flex;
   align-items: center;
   gap: 8px;
+  min-height: 36px;
   color: var(--text-2);
   font-family: var(--mono);
   font-size: 12px;
   line-height: 16px;
+  white-space: nowrap;
 }
 
 .status-led {
@@ -292,8 +225,6 @@ select {
 
 .app {
   min-height: 100vh;
-  max-width: 1440px;
-  margin-left: 240px;
   padding: 32px 32px 64px;
 }
 
@@ -327,11 +258,16 @@ select {
 }
 
 .header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px 24px;
   margin-bottom: 24px;
   scroll-margin-top: 32px;
 }
 
-.header h2 {
+.header h1 {
   margin: 0;
   font-size: 28px;
   line-height: 36px;
@@ -367,9 +303,10 @@ select {
   gap: 16px;
 }
 
+/* VRAM card stays instrument-sized; Active models takes the rest of the width */
 @media (min-width: 1100px) {
   .grid-split {
-    grid-template-columns: minmax(0, 3fr) minmax(360px, 2fr);
+    grid-template-columns: minmax(0, 1fr) clamp(360px, 36%, 480px);
   }
 }
 
@@ -702,6 +639,42 @@ select {
   margin: 20px -20px -20px;
   overflow-x: auto;
   border-top: 1px solid var(--hairline);
+  container-type: inline-size;
+}
+
+/*
+ * Columns drop by priority when the card is narrower than the table needs,
+ * so the table fits instead of scrolling. p5 goes first, p2 last.
+ * Thresholds are the table's natural width with that tier still shown.
+ */
+@container (max-width: 1822px) {
+  .models-table .p5 {
+    display: none;
+  }
+}
+
+@container (max-width: 1551px) {
+  .models-table .p4 {
+    display: none;
+  }
+}
+
+@container (max-width: 1349px) {
+  .models-table .p3 {
+    display: none;
+  }
+}
+
+@container (max-width: 1069px) {
+  .models-table .p2 {
+    display: none;
+  }
+}
+
+.parent-ref {
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .models-table {
@@ -816,49 +789,53 @@ select {
   gap: 4px;
 }
 
-/* Small screens */
+/* Stacked list for narrow cards, where even the core columns would scroll */
 
-@media (max-width: 860px) {
-  .sidebar {
-    position: static;
-    flex-direction: row;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 12px 16px;
-    width: auto;
-    height: auto;
-    padding: 16px;
-    border-right: 0;
-    border-bottom: 1px solid var(--hairline);
-  }
+.models-list {
+  display: none;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
 
-  .sidebar-brand {
-    padding: 0;
-  }
+.models-list-item {
+  padding: 12px 20px;
+  border-bottom: 1px solid var(--hairline);
+}
 
-  .sidebar-brand p {
+.models-list-item:last-child {
+  border-bottom: 0;
+}
+
+.models-list-name {
+  font-family: var(--mono);
+  font-size: 13px;
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+
+.models-list-item .model-meta {
+  margin: 4px 0 0;
+}
+
+.models-list-item .row-actions {
+  margin-top: 8px;
+}
+
+@container (max-width: 839px) {
+  .models-table {
     display: none;
   }
 
-  .sidebar-nav {
-    order: 3;
-    flex-direction: row;
-    width: 100%;
-    margin: 0 -8px;
-    overflow-x: auto;
+  .models-list {
+    display: block;
   }
+}
 
-  .sidebar-nav a {
-    flex: none;
-  }
+/* Small screens */
 
-  .sidebar-footer {
-    margin: 0 0 0 auto;
-    padding: 0;
-  }
-
+@media (max-width: 860px) {
   .app {
-    margin-left: 0;
     padding: 24px 16px 48px;
   }
 
@@ -873,6 +850,10 @@ select {
   .models-table th:first-child,
   .models-table td:first-child {
     padding-left: 16px;
+  }
+
+  .models-list-item {
+    padding: 12px 16px;
   }
 
   .models-header {

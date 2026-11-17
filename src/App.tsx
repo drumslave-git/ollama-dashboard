@@ -55,83 +55,68 @@ export default function App() {
       : null;
 
   return (
-    <div className="app-shell">
-      <aside className="sidebar">
-        <div className="sidebar-brand">
+    <main className="app">
+      <header className="header" id="overview">
+        <div>
           <h1>Ollama Dashboard</h1>
-          <p>Monitor and manage models</p>
-        </div>
-        <nav className="sidebar-nav">
-          <a href="#overview">Overview</a>
-          <a href="#active-models">Active models</a>
-          <a href="#vram">VRAM</a>
-          <a href="#models">Models</a>
-        </nav>
-        <div className="sidebar-footer">
-          <span className={`status ${connected ? "ok" : "err"}`}>
-            <span className="status-led" aria-hidden />
-            {connected
-              ? version
-                ? `Ollama ${version}`
-                : "Connected"
-              : "Disconnected"}
-          </span>
-        </div>
-      </aside>
-
-      <main className="app">
-        <header className="header" id="overview">
-          <h2>Overview</h2>
           {summary && <p>{summary}</p>}
-        </header>
+        </div>
+        <span className={`status ${connected ? "ok" : "err"}`} role="status">
+          <span className="status-led" aria-hidden />
+          {connected
+            ? version
+              ? `Ollama ${version}`
+              : "Connected"
+            : "Disconnected"}
+        </span>
+      </header>
 
-        {(running.error || local.error) && (
-          <div className="error-banner" role="alert">
-            {running.error && <div>Running models: {running.error}</div>}
-            {local.error && <div>Local models: {local.error}</div>}
-            <div className="error-hint">
-              Check that Ollama is running and OLLAMA_HOST is correct
-            </div>
+      {(running.error || local.error) && (
+        <div className="error-banner" role="alert">
+          {running.error && <div>Running models: {running.error}</div>}
+          {local.error && <div>Local models: {local.error}</div>}
+          <div className="error-hint">
+            Check that Ollama is running and OLLAMA_HOST is correct
           </div>
-        )}
+        </div>
+      )}
 
-        <div className="grid grid-split">
-          <section className="card" id="active-models">
-            <div className="card-header">
-              <h2 className="card-title">Active models</h2>
-            </div>
-            {running.loading && activeModels.length === 0 ? (
-              <p className="empty">Loading…</p>
-            ) : (
-              <ActiveModels
-                models={activeModels}
-                totalVram={gpu.data?.totalVram ?? null}
-                colors={colors}
-                onFocusModel={setFocusModel}
-                onRefresh={refreshRunning}
-              />
-            )}
-          </section>
-
-          <section className="card card-vram" id="vram">
-            <VramSummary
+      <div className="grid grid-split">
+        <section className="card" id="active-models">
+          <div className="card-header">
+            <h2 className="card-title">Active models</h2>
+          </div>
+          {running.loading && activeModels.length === 0 ? (
+            <p className="empty">Loading…</p>
+          ) : (
+            <ActiveModels
               models={activeModels}
+              totalVram={gpu.data?.totalVram ?? null}
               colors={colors}
-              focusModel={focusModel}
-              gpu={gpu.data}
-              gpuError={gpu.error}
-              gpuLoading={gpu.loading}
+              onFocusModel={setFocusModel}
+              onRefresh={refreshRunning}
             />
-          </section>
-        </div>
+          )}
+        </section>
 
-        <div className="models-section" id="models">
-          <ModelsPanel
-            models={local.data?.models ?? []}
-            onRefresh={refreshLocal}
+        <section className="card card-vram" id="vram">
+          <VramSummary
+            models={activeModels}
+            colors={colors}
+            focusModel={focusModel}
+            gpu={gpu.data}
+            gpuError={gpu.error}
+            gpuLoading={gpu.loading}
           />
-        </div>
-      </main>
-    </div>
+        </section>
+      </div>
+
+      <div className="models-section" id="models">
+        <ModelsPanel
+          models={local.data?.models ?? []}
+          onRefresh={refreshLocal}
+        />
+      </div>
+    </main>
   );
 }

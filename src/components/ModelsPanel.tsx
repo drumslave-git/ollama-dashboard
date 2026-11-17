@@ -213,6 +213,27 @@ export function ModelsPanel({ models, onRefresh }: Props) {
       ? Math.round((pull.progress.completed / pull.progress.total) * 100)
       : null;
 
+  const rowActions = (id: string) => (
+    <div className="row-actions">
+      <button
+        type="button"
+        className="btn-secondary btn-sm"
+        onClick={() => void runPull(id)}
+        disabled={busy}
+      >
+        Update
+      </button>
+      <button
+        type="button"
+        className="btn-ghost-danger btn-sm"
+        onClick={() => void runDelete(id)}
+        disabled={busy}
+      >
+        {deleting === id ? "Deleting…" : "Delete"}
+      </button>
+    </div>
+  );
+
   return (
     <div className="card">
       <div className="card-header models-header">
@@ -330,16 +351,16 @@ export function ModelsPanel({ models, onRefresh }: Props) {
               <tr>
                 <th>Name</th>
                 <th className="num">Size</th>
-                <th>Capabilities</th>
-                <th>Modified</th>
-                <th>Digest</th>
-                <th>Format</th>
-                <th>Family</th>
+                <th className="p2">Capabilities</th>
+                <th className="p3">Modified</th>
+                <th className="p4">Digest</th>
+                <th className="p4">Format</th>
+                <th className="p3">Family</th>
                 <th className="num">Params</th>
                 <th>Quant</th>
-                <th>Parent</th>
+                <th className="p5">Parent</th>
                 <th className="num">Context</th>
-                <th className="num">Embedding</th>
+                <th className="num p5">Embedding</th>
                 <th className="col-actions">
                   <span className="sr-only">Actions</span>
                 </th>
@@ -349,7 +370,6 @@ export function ModelsPanel({ models, onRefresh }: Props) {
               {models.map((m) => {
                 const d = m.details;
                 const id = localModelId(m);
-                const rowBusy = busy && (deleting === id || pull?.target === id);
                 const caps = sortCapabilities(m.capabilities);
                 const families = familyExtra(d);
 
@@ -364,60 +384,91 @@ export function ModelsPanel({ models, onRefresh }: Props) {
                       )}
                     </td>
                     <td className="num mono">{formatBytes(m.size)}</td>
-                    <td className="capabilities-cell">
+                    <td className="capabilities-cell p2">
                       {caps.length > 0 ? caps.join(", ") : <Empty />}
                     </td>
-                    <td className="mono" title={m.modified_at}>
+                    <td className="mono p3" title={m.modified_at}>
                       {formatDateTime(m.modified_at)}
                     </td>
-                    <td className="mono digest" title={m.digest}>
+                    <td className="mono digest p4" title={m.digest}>
                       {shortDigest(m.digest)}
                     </td>
-                    <td>{d?.format || <Empty />}</td>
-                    <td>
+                    <td className="p4">{d?.format || <Empty />}</td>
+                    <td className="p3">
                       {d?.family || <Empty />}
                       {families && <div className="cell-sub">{families}</div>}
                     </td>
                     <td className="num mono">{d?.parameter_size || <Empty />}</td>
                     <td className="mono">{d?.quantization_level || <Empty />}</td>
-                    <td className="mono">
-                      {d?.parent_model ? <ModelRef value={d.parent_model} /> : <Empty />}
+                    <td className="mono p5" title={d?.parent_model || undefined}>
+                      {d?.parent_model ? (
+                        <div className="parent-ref">
+                          <ModelRef value={d.parent_model} />
+                        </div>
+                      ) : (
+                        <Empty />
+                      )}
                     </td>
                     <td className="num mono">
                       {d?.context_length != null
                         ? d.context_length.toLocaleString()
                         : <Empty />}
                     </td>
-                    <td className="num mono">
+                    <td className="num mono p5">
                       {d?.embedding_length != null
                         ? d.embedding_length.toLocaleString()
                         : <Empty />}
                     </td>
-                    <td className="col-actions">
-                      <div className="row-actions">
-                        <button
-                          type="button"
-                          className="btn-secondary btn-sm"
-                          onClick={() => void runPull(id)}
-                          disabled={rowBusy || busy}
-                        >
-                          Update
-                        </button>
-                        <button
-                          type="button"
-                          className="btn-ghost-danger btn-sm"
-                          onClick={() => void runDelete(id)}
-                          disabled={rowBusy || busy}
-                        >
-                          {deleting === id ? "Deleting…" : "Delete"}
-                        </button>
-                      </div>
-                    </td>
+                    <td className="col-actions">{rowActions(id)}</td>
                   </tr>
                 );
               })}
             </tbody>
           </table>
+
+          {/* Narrow cards show the library as a stacked list instead of a scrolling table */}
+          <ul className="models-list">
+            {models.map((m) => {
+              const d = m.details;
+              const id = localModelId(m);
+              return (
+                <li key={`${id}:${m.digest || m.modified_at}`} className="models-list-item">
+                  <div className="models-list-name">
+                    <ModelRef value={id} />
+                  </div>
+                  <dl className="model-meta">
+                    <div>
+                      <dt>Size</dt>
+                      <dd>{formatBytes(m.size)}</dd>
+                    </div>
+                    {d?.parameter_size && (
+                      <div>
+                        <dt>Params</dt>
+                        <dd>{d.parameter_size}</dd>
+                      </div>
+                    )}
+                    {d?.quantization_level && (
+                      <div>
+                        <dt>Quant</dt>
+                        <dd>{d.quantization_level}</dd>
+                      </div>
+                    )}
+                    {d?.context_length != null && (
+                      <div>
+                        <dt>Context</dt>
+                        <dd>{d.context_length.toLocaleString()}</dd>
+                      </div>
+                    )}
+                    <div>
+                      <dt>Modified</dt>
+                      <dd>{formatDateTime(m.modified_at)}</dd>
+                    </div>
+                  </dl>
+                  {rowActions(id)}
+                </li>
+              );
+            })}
+          </ul>
         </div>
       )}
     </div>
