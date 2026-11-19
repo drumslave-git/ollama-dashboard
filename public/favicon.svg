@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16">
+  <!-- Memory map in miniature: graphite tile, three blocks in use, one free. Drawn on the 16px grid so it stays crisp in a tab. -->
+  <rect width="16" height="16" rx="3.5" fill="#19191b"/>
+  <rect x="2" y="2" width="5" height="5" rx="1" fill="#f0a43a"/>
+  <rect x="9" y="2" width="5" height="5" rx="1" fill="#f0a43a"/>
+  <rect x="2" y="9" width="5" height="5" rx="1" fill="#f0a43a"/>
+  <rect x="9" y="9" width="5" height="5" rx="1" fill="#4a4a4f"/>
+</svg>
