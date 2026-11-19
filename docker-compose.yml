@@ -9,6 +9,8 @@ services:
       PORT: "3000"
       OLLAMA_HOST: ${OLLAMA_HOST:-http://host.docker.internal:11434}
       GPU_VRAM_TOTAL_GB: ${GPU_VRAM_TOTAL_GB:-}
+      OLLAMA_KV_CACHE_TYPE: ${OLLAMA_KV_CACHE_TYPE:-}
+      OLLAMA_NUM_PARALLEL: ${OLLAMA_NUM_PARALLEL:-}
       HF_TOKEN: ${HF_TOKEN:-}
     extra_hosts:
       - "host.docker.internal:host-gateway"

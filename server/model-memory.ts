@@ -3,12 +3,24 @@ import { envNumber } from "./env.js";
 /** Architecture facts that decide what each context token costs in memory. */
 interface MemorySpec {
   maxContext: number | null;
-  /** KV cache bytes per token, summed over layers that keep the whole context. */
-  kvBytesPerToken: number;
+  /** KV cache values per token, summed over layers that keep the whole context. */
+  kvValuesPerToken: number;
   /** Same, for sliding-window layers, which only keep `windowTokens`. */
-  kvWindowBytesPerToken: number;
+  kvWindowValuesPerToken: number;
   windowTokens: number;
 }
+
+export type KvCacheType = "f16" | "q8_0" | "q4_0";
+
+/** How the Ollama server stores its KV cache; it does not report this, so it comes from env. */
+export interface KvSettings {
+  kvCacheType: KvCacheType;
+  /** Parallel request slots; each one holds its own full context. */
+  numParallel: number;
+}
+
+/** Ollama's defaults (0.40): f16 cache, one request at a time. */
+export const DEFAULT_KV_SETTINGS: KvSettings = { kvCacheType: "f16", numParallel: 1 };
 
 export interface ModelEstimate {
   weights: number;
@@ -26,11 +38,61 @@ export interface ModelEstimates {
   totalVram: number | null;
   /** Context that `baseVram` is normally quoted at. */
   referenceContext: number;
+  /** The KV cache settings the estimates were made with. */
+  kvCacheType: KvCacheType;
+  numParallel: number;
   models: Record<string, ModelEstimate>;
 }
 
-/** Ollama stores the KV cache as f16 unless OLLAMA_KV_CACHE_TYPE says otherwise. */
-const KV_BYTES_PER_VALUE = 2;
+/**
+ * Bytes per cached value. Quantised types store blocks of 32 values with one
+ * f16 scale: q8_0 is 34 bytes per block, q4_0 is 18 (GGML block sizes).
+ */
+const KV_BYTES_PER_VALUE: Record<KvCacheType, number> = {
+  f16: 2,
+  q8_0: 34 / 32,
+  q4_0: 18 / 32,
+};
+
+function isKvCacheType(value: string): value is KvCacheType {
+  return Object.hasOwn(KV_BYTES_PER_VALUE, value);
+}
+
+/**
+ * Reads OLLAMA_KV_CACHE_TYPE and OLLAMA_NUM_PARALLEL, which must mirror the
+ * Ollama server's own settings. Invalid values fall back to the defaults with
+ * a warning. Call once, after the env is loaded.
+ */
+export function readKvSettings(
+  env: NodeJS.ProcessEnv = process.env,
+  warn: (message: string) => void = console.warn,
+): KvSettings {
+  const settings = { ...DEFAULT_KV_SETTINGS };
+
+  const rawType = env.OLLAMA_KV_CACHE_TYPE?.trim().toLowerCase() ?? "";
+  if (isKvCacheType(rawType)) {
+    settings.kvCacheType = rawType;
+  } else if (rawType !== "") {
+    warn(
+      `OLLAMA_KV_CACHE_TYPE="${env.OLLAMA_KV_CACHE_TYPE}" is not f16, q8_0 or q4_0; using f16.`,
+    );
+  }
+
+  const rawParallel = env.OLLAMA_NUM_PARALLEL?.trim() ?? "";
+  if (rawParallel !== "") {
+    const parallel = Math.floor(Number(rawParallel));
+    if (Number.isFinite(parallel) && parallel >= 1) {
+      settings.numParallel = parallel;
+    } else {
+      warn(
+        `OLLAMA_NUM_PARALLEL="${env.OLLAMA_NUM_PARALLEL}" is not a positive integer; using 1.`,
+      );
+    }
+  }
+
+  return settings;
+}
+
 /** Default batch size; sliding-window layers keep the window plus one batch. */
 const BATCH_TOKENS = 512;
 /**
@@ -75,8 +137,8 @@ export function readMemorySpec(show: ShowResponse): MemorySpec {
 
   const spec: MemorySpec = {
     maxContext: num(key("context_length")),
-    kvBytesPerToken: 0,
-    kvWindowBytesPerToken: 0,
+    kvValuesPerToken: 0,
+    kvWindowValuesPerToken: 0,
     windowTokens: 0,
   };
 
@@ -101,8 +163,7 @@ export function readMemorySpec(show: ShowResponse): MemorySpec {
   const valueLengthMla = num(key("attention.value_length_mla"));
 
   if (keyLengthMla != null && valueLengthMla != null) {
-    spec.kvBytesPerToken =
-      layers * (keyLengthMla + valueLengthMla) * KV_BYTES_PER_VALUE;
+    spec.kvValuesPerToken = layers * (keyLengthMla + valueLengthMla);
     return spec;
   }
 
@@ -124,21 +185,26 @@ export function readMemorySpec(show: ShowResponse): MemorySpec {
       window > 0 && Array.isArray(windowPattern) && windowPattern[i] === true;
     const k = (windowed ? keyLengthSwa : keyLength) ?? headSize;
     const v = (windowed ? valueLengthSwa : valueLength) ?? headSize;
-    const bytes = kvHeads * (k + v) * KV_BYTES_PER_VALUE;
+    const values = kvHeads * (k + v);
 
-    if (windowed) spec.kvWindowBytesPerToken += bytes;
-    else spec.kvBytesPerToken += bytes;
+    if (windowed) spec.kvWindowValuesPerToken += values;
+    else spec.kvValuesPerToken += values;
   }
 
-  if (spec.kvWindowBytesPerToken > 0) spec.windowTokens = window;
+  if (spec.kvWindowValuesPerToken > 0) spec.windowTokens = window;
   return spec;
 }
 
-function contextMemory(spec: MemorySpec, context: number): number {
+/**
+ * KV cache for a per-request context. Each parallel slot holds its own copy,
+ * and a sliding-window layer keeps at most the window plus one batch per slot
+ * (llama.cpp sizes the cache this way unless it is unified).
+ */
+function contextMemory(spec: MemorySpec, context: number, kv: KvSettings): number {
   const windowed = Math.min(context, spec.windowTokens + BATCH_TOKENS);
-  return (
-    spec.kvBytesPerToken * context + spec.kvWindowBytesPerToken * windowed
-  );
+  const values =
+    spec.kvValuesPerToken * context + spec.kvWindowValuesPerToken * windowed;
+  return kv.numParallel * KV_BYTES_PER_VALUE[kv.kvCacheType] * values;
 }
 
 /** The model's limit if it fits, else the largest multiple of CONTEXT_STEP that does. */
@@ -158,8 +224,9 @@ export function estimateModel(
   spec: MemorySpec,
   weights: number,
   totalVram: number | null,
+  kv: KvSettings = DEFAULT_KV_SETTINGS,
 ): ModelEstimate {
-  const vramAt = (context: number) => weights + contextMemory(spec, context);
+  const vramAt = (context: number) => weights + contextMemory(spec, context, kv);
   const budget = totalVram != null ? totalVram * VRAM_BUDGET : null;
 
   let suggestedContext: number | null = null;
@@ -210,7 +277,10 @@ async function loadSpec(ollamaHost: string, model: TagsModel): Promise<MemorySpe
   }
 }
 
-export async function getModelEstimates(ollamaHost: string): Promise<ModelEstimates> {
+export async function getModelEstimates(
+  ollamaHost: string,
+  kv: KvSettings,
+): Promise<ModelEstimates> {
   const host = ollamaHost.replace(/\/$/, "");
   const res = await fetch(`${host}/api/tags`, { signal: AbortSignal.timeout(10_000) });
   if (!res.ok) throw new Error(`Ollama /api/tags failed (${res.status})`);
@@ -227,10 +297,16 @@ export async function getModelEstimates(ollamaHost: string): Promise<ModelEstima
       const spec = await loadSpec(host, model);
       if (!spec) continue;
       const id = model.name?.trim() || model.model;
-      models[id] = estimateModel(spec, model.size, totalVram);
+      models[id] = estimateModel(spec, model.size, totalVram, kv);
     }
   };
   await Promise.all(Array.from({ length: SHOW_CONCURRENCY }, worker));
 
-  return { totalVram, referenceContext: REFERENCE_CONTEXT, models };
+  return {
+    totalVram,
+    referenceContext: REFERENCE_CONTEXT,
+    kvCacheType: kv.kvCacheType,
+    numParallel: kv.numParallel,
+    models,
+  };
 }

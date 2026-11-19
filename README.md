@@ -36,6 +36,10 @@ Copy `.env.example` to `.env`:
 | `PROXY_PORT` | Dev only. Internal API proxy port (default `3001`). Not exposed in Docker. |
 | `GPU_VRAM_TOTAL_GB` | Total GPU VRAM in GiB. Required for the VRAM usage percentage bar and for context suggestions. |
 | `HF_TOKEN` | Optional Hugging Face token for private GGUF repos |
+| `OLLAMA_KV_CACHE_TYPE` | Optional. KV cache type of your Ollama server: `f16` (default), `q8_0` or `q4_0`; the VRAM estimates price the cache with it. |
+| `OLLAMA_NUM_PARALLEL` | Optional. Parallel request slots of your Ollama server (default `1`); each slot holds its own context, so the KV cache costs this many times as much. |
+
+The dashboard cannot read the Ollama server's own settings, so set `OLLAMA_KV_CACHE_TYPE` and `OLLAMA_NUM_PARALLEL` to the same values the Ollama server runs with. A quantised KV cache needs flash attention: Ollama turns it on where the GPU supports it, and the model fails to load if flash attention is switched off.
 
 Example:
 

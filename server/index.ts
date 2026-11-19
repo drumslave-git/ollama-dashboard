@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import { envNumber, loadProjectEnv } from "./env.js";
 import { getGpuStats } from "./gpu.js";
 import { listGgufFiles } from "./huggingface.js";
-import { getModelEstimates } from "./model-memory.js";
+import { getModelEstimates, readKvSettings } from "./model-memory.js";
 import { ollamaProxy } from "./ollama-proxy.js";
 
 loadProjectEnv();
@@ -14,6 +14,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = envNumber("PORT", 3000);
 const PROXY_PORT = envNumber("PROXY_PORT", 3001);
 const OLLAMA_HOST = process.env.OLLAMA_HOST || "http://localhost:11434";
+const KV_SETTINGS = readKvSettings();
 const isProduction = process.env.NODE_ENV === "production";
 const clientDir = path.join(__dirname, "../client");
 const hasBuild = fs.existsSync(path.join(clientDir, "index.html"));
@@ -36,7 +37,7 @@ app.get("/api/dashboard/gpu", async (_req, res) => {
 
 app.get("/api/dashboard/estimates", async (_req, res) => {
   try {
-    res.json(await getModelEstimates(OLLAMA_HOST));
+    res.json(await getModelEstimates(OLLAMA_HOST, KV_SETTINGS));
   } catch (err) {
     const message = err instanceof Error ? err.message : "Model estimates failed";
     res.status(502).json({ error: message });
