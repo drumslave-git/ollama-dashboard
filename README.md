@@ -10,6 +10,7 @@ Web UI to monitor and manage a remote or local [Ollama](https://ollama.com) inst
   - Pull by Ollama tag or Hugging Face GGUF repo (URL, `hf.co/…`, or `user/repo`)
   - Quantization picker when a Hugging Face repo has multiple GGUF files
   - List downloaded models (full metadata from Ollama)
+  - Estimated VRAM and a suggested context size per model: the largest context that keeps weights plus KV cache within 90% of `GPU_VRAM_TOTAL_GB`
   - Update a single model (re-pull)
   - Bulk update (re-pull all)
   - Delete with confirmation
@@ -33,7 +34,7 @@ Copy `.env.example` to `.env`:
 | `PORT` | Dashboard URL port. In dev, Vite listens here. In production/Docker, the app listens here. |
 | `OLLAMA_HOST` | Base URL of Ollama (e.g. `http://localhost:11434` or `https://ollama.example.com`) |
 | `PROXY_PORT` | Dev only. Internal API proxy port (default `3001`). Not exposed in Docker. |
-| `GPU_VRAM_TOTAL_GB` | Total GPU VRAM in GiB. Required for the VRAM usage percentage bar. |
+| `GPU_VRAM_TOTAL_GB` | Total GPU VRAM in GiB. Required for the VRAM usage percentage bar and for context suggestions. |
 | `HF_TOKEN` | Optional Hugging Face token for private GGUF repos |
 
 Example:

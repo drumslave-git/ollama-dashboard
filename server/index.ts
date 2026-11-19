@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { envNumber, loadProjectEnv } from "./env.js";
 import { getGpuStats } from "./gpu.js";
 import { listGgufFiles } from "./huggingface.js";
+import { getModelEstimates } from "./model-memory.js";
 import { ollamaProxy } from "./ollama-proxy.js";
 
 loadProjectEnv();
@@ -30,6 +31,15 @@ app.get("/api/dashboard/gpu", async (_req, res) => {
   } catch (err) {
     const message = err instanceof Error ? err.message : "GPU stats failed";
     res.status(500).json({ error: message });
+  }
+});
+
+app.get("/api/dashboard/estimates", async (_req, res) => {
+  try {
+    res.json(await getModelEstimates(OLLAMA_HOST));
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Model estimates failed";
+    res.status(502).json({ error: message });
   }
 });
 

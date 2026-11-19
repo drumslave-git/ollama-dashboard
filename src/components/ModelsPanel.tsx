@@ -8,6 +8,7 @@ import {
 } from "../api/ollama";
 import {
   displayValue,
+  estimateBreakdown,
   formatBytes,
   formatDateTime,
   pullStatusLabel,
@@ -19,7 +20,13 @@ import {
   buildOllamaHfPullName,
   parseHuggingFaceInput,
 } from "../lib/huggingface";
-import type { LocalModel, ModelDetails, PullProgress } from "../types/ollama";
+import { useModelEstimates } from "../hooks/useModelEstimates";
+import type {
+  LocalModel,
+  ModelDetails,
+  ModelEstimate,
+  PullProgress,
+} from "../types/ollama";
 import { BlockBar } from "./BlockBar";
 
 interface Props {
@@ -50,7 +57,34 @@ function familyExtra(d: ModelDetails | undefined): string | null {
   return extra.length > 0 ? extra.join(", ") : null;
 }
 
+/** Estimated VRAM, as a share of the GPU when its size is known. */
+function vramLabel(est: ModelEstimate, totalVram: number | null): string {
+  const size = formatBytes(est.vram);
+  if (totalVram == null || totalVram <= 0) return size;
+  return `${size} · ${Math.round((est.vram / totalVram) * 100)}%`;
+}
+
+/** What the estimate assumes, for rows where it is not the suggested context. */
+function vramNote(est: ModelEstimate): string | null {
+  const context = `${est.context.toLocaleString()} ctx`;
+  if (est.fits === false) return `over GPU at ${context}`;
+  if (est.suggestedContext == null) return `at ${context}`;
+  return null;
+}
+
+function suggestionHint(est: ModelEstimate): string {
+  if (est.suggestedContext != null) {
+    return "Largest context that keeps this model fully on the GPU";
+  }
+  if (est.fits === false) {
+    return "Too large for the GPU at any context. Ollama will split it with system RAM.";
+  }
+  return "Set GPU_VRAM_TOTAL_GB to get a suggestion";
+}
+
 export function ModelsPanel({ models, onRefresh }: Props) {
+  const estimates = useModelEstimates(models);
+  const totalVram = estimates?.totalVram ?? null;
   const [tag, setTag] = useState("");
   const [hfFiles, setHfFiles] = useState<HfGgufFile[]>([]);
   const [hfQuant, setHfQuant] = useState("");
@@ -360,6 +394,8 @@ export function ModelsPanel({ models, onRefresh }: Props) {
                 <th>Quant</th>
                 <th className="p5">Parent</th>
                 <th className="num">Context</th>
+                <th className="num">Suggested ctx</th>
+                <th className="num">Est. VRAM</th>
                 <th className="num p5">Embedding</th>
                 <th className="col-actions">
                   <span className="sr-only">Actions</span>
@@ -372,6 +408,8 @@ export function ModelsPanel({ models, onRefresh }: Props) {
                 const id = localModelId(m);
                 const caps = sortCapabilities(m.capabilities);
                 const families = familyExtra(d);
+                const est = estimates?.models[id];
+                const note = est ? vramNote(est) : null;
 
                 return (
                   <tr key={`${id}:${m.digest || m.modified_at}`}>
@@ -414,6 +452,21 @@ export function ModelsPanel({ models, onRefresh }: Props) {
                         ? d.context_length.toLocaleString()
                         : <Empty />}
                     </td>
+                    <td
+                      className="num mono"
+                      title={est ? suggestionHint(est) : undefined}
+                    >
+                      {est?.suggestedContext != null
+                        ? est.suggestedContext.toLocaleString()
+                        : <Empty />}
+                    </td>
+                    <td
+                      className={est?.fits === false ? "num mono over" : "num mono"}
+                      title={est ? estimateBreakdown(est) : undefined}
+                    >
+                      {est ? vramLabel(est, totalVram) : <Empty />}
+                      {note && <div className="cell-sub">{note}</div>}
+                    </td>
                     <td className="num mono p5">
                       {d?.embedding_length != null
                         ? d.embedding_length.toLocaleString()
@@ -431,6 +484,8 @@ export function ModelsPanel({ models, onRefresh }: Props) {
             {models.map((m) => {
               const d = m.details;
               const id = localModelId(m);
+              const est = estimates?.models[id];
+              const note = est ? vramNote(est) : null;
               return (
                 <li key={`${id}:${m.digest || m.modified_at}`} className="models-list-item">
                   <div className="models-list-name">
@@ -457,6 +512,21 @@ export function ModelsPanel({ models, onRefresh }: Props) {
                       <div>
                         <dt>Context</dt>
                         <dd>{d.context_length.toLocaleString()}</dd>
+                      </div>
+                    )}
+                    {est?.suggestedContext != null && (
+                      <div>
+                        <dt>Suggested ctx</dt>
+                        <dd>{est.suggestedContext.toLocaleString()}</dd>
+                      </div>
+                    )}
+                    {est && (
+                      <div>
+                        <dt>Est. VRAM</dt>
+                        <dd className={est.fits === false ? "over" : undefined}>
+                          {vramLabel(est, totalVram)}
+                          {note && `, ${note}`}
+                        </dd>
                       </div>
                     )}
                     <div>

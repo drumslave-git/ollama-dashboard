@@ -1,4 +1,4 @@
-import type { PullProgress } from "../types/ollama";
+import type { ModelEstimate, PullProgress } from "../types/ollama";
 
 export function formatBytes(bytes: number): string {
   if (bytes === 0) return "0 B";
@@ -9,6 +9,14 @@ export function formatBytes(bytes: number): string {
   );
   const value = bytes / 1024 ** i;
   return `${value.toFixed(i === 0 ? 0 : 1)} ${units[i]}`;
+}
+
+/** The parts of a VRAM estimate, spelled out for a tooltip. */
+export function estimateBreakdown(est: ModelEstimate): string {
+  return (
+    `Weights ${formatBytes(est.weights)} + context ${formatBytes(est.contextMemory)}, ` +
+    `at ${est.context.toLocaleString()} tokens`
+  );
 }
 
 export function formatRelativeTime(iso: string): string {

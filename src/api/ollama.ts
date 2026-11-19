@@ -2,6 +2,7 @@ import { modelRefMatchesLocal } from "../lib/huggingface";
 import type { GpuStats } from "../types/gpu";
 import type {
   LocalModel,
+  ModelEstimates,
   PullProgress,
   PsResponse,
   TagsResponse,
@@ -42,6 +43,11 @@ export async function fetchVersion(): Promise<VersionResponse> {
 export async function fetchGpuStats(): Promise<GpuStats> {
   const res = await fetch("/api/dashboard/gpu");
   return parseJson<GpuStats>(res);
+}
+
+export async function fetchModelEstimates(): Promise<ModelEstimates> {
+  const res = await fetch("/api/dashboard/estimates");
+  return parseJson<ModelEstimates>(res);
 }
 
 export async function unloadModel(name: string): Promise<void> {
