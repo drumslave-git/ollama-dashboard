@@ -635,6 +635,107 @@ select {
   margin-top: 16px;
 }
 
+/* Filters: chips wrap onto more lines, never scroll */
+
+.model-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 24px;
+  margin-top: 16px;
+}
+
+.filter-group {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.filter-label {
+  margin-right: 4px;
+  color: var(--text-3);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.chip {
+  gap: 6px;
+  height: 28px;
+  padding: 0 10px;
+  border-color: var(--hairline);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-2);
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 400;
+}
+
+.chip:hover {
+  background: var(--raised);
+  color: var(--text);
+}
+
+.chip[aria-pressed="true"] {
+  background: var(--raised);
+  border-color: var(--hairline-strong);
+  color: var(--text);
+}
+
+/* A memory block: hollow when off, filled when the filter is on */
+.chip-mark {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 1.5px;
+  box-shadow: inset 0 0 0 1px var(--text-3);
+}
+
+.chip[aria-pressed="true"] .chip-mark {
+  background: var(--text);
+  box-shadow: none;
+}
+
+.chip-count {
+  color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.filter-summary {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-left: auto;
+}
+
+.filter-count {
+  color: var(--text-2);
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 16px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.estimate-note {
+  margin: 12px 0 0;
+  color: var(--text-3);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.filter-empty {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 16px;
+  margin: 20px -20px -20px;
+  padding: 24px 20px;
+  border-top: 1px solid var(--hairline);
+}
+
 .table-wrap {
   margin: 20px -20px -20px;
   overflow-x: auto;
@@ -662,6 +763,11 @@ select {
 @container (max-width: 1604px) {
   .models-table .p3 {
     display: none;
+  }
+
+  /* Sorted by a column that is now hidden: keep the order visible through the compact control */
+  .table-wrap:has(.models-table th.p3[aria-sort]) .list-sort {
+    display: flex;
   }
 }
 
@@ -724,6 +830,46 @@ select {
   color: var(--text-2);
 }
 
+/* Sortable headers: the button is the label; the chevron sits in the cell padding so widths never shift */
+.sort-button {
+  position: relative;
+  gap: 0;
+  height: 24px;
+  margin: -4px 0;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: none;
+  color: inherit;
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 500;
+}
+
+.sort-button:hover {
+  color: var(--text-2);
+}
+
+.sort-button:active:not(:disabled) {
+  transform: none;
+}
+
+.models-table th[aria-sort] .sort-button {
+  color: var(--text);
+}
+
+.sort-button .sort-mark {
+  position: absolute;
+  top: 50%;
+  right: -11px;
+  translate: 0 -50%;
+}
+
+.models-table th.num .sort-button .sort-mark {
+  right: auto;
+  left: -11px;
+}
+
 .models-table tbody tr:hover td {
   background: var(--surface-hover);
 }
@@ -736,7 +882,11 @@ select {
   font-size: 12px;
 }
 
+/* Long refs wrap inside a fixed cap, so one long name cannot push the table past its container */
 .models-table .name-cell {
+  max-width: 360px;
+  white-space: normal;
+  overflow-wrap: anywhere;
   color: var(--text);
   font-family: var(--mono);
   font-weight: 500;
@@ -803,6 +953,38 @@ select {
   list-style: none;
 }
 
+/* The stacked list has no header row, so it gets its own sort control */
+.list-sort {
+  display: none;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 20px;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.list-sort-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  color: var(--text-3);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.list-sort-field select {
+  width: auto;
+  min-width: 0;
+  height: 28px;
+  border-radius: 6px;
+  color: var(--text);
+}
+
+.list-sort .btn-sm {
+  gap: 6px;
+}
+
 .models-list-item {
   padding: 12px 20px;
   border-bottom: 1px solid var(--hairline);
@@ -835,6 +1017,10 @@ select {
   .models-list {
     display: block;
   }
+
+  .list-sort {
+    display: flex;
+  }
 }
 
 /* Small screens */
@@ -857,8 +1043,14 @@ select {
     padding-left: 16px;
   }
 
-  .models-list-item {
+  .models-list-item,
+  .list-sort {
     padding: 12px 16px;
+  }
+
+  .filter-empty {
+    margin: 16px -16px -16px;
+    padding: 20px 16px;
   }
 
   .models-header {

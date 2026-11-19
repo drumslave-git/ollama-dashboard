@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useMemo,
+  useState,
+  type ReactNode,
+} from "react";
 import { fetchHfGgufFiles, type HfGgufFile } from "../api/huggingface";
 import {
   deleteModel,
@@ -21,6 +28,24 @@ import {
   buildOllamaHfPullName,
   parseHuggingFaceInput,
 } from "../lib/huggingface";
+import {
+  defaultDir,
+  dirLabel,
+  estimateAssumptions,
+  filterOptions,
+  hasFilters,
+  loadTableState,
+  matchesFilters,
+  nextSort,
+  saveTableState,
+  SORT_LABELS,
+  sortModels,
+  type FilterOption,
+  type FilterState,
+  type SortKey,
+  type SortState,
+  type TableState,
+} from "../lib/modelTable";
 import { useModelEstimates } from "../hooks/useModelEstimates";
 import type {
   LocalModel,
@@ -91,8 +116,162 @@ function suggestionHint(est: ModelEstimate): string {
   return "Set GPU_VRAM_TOTAL_GB to get a suggestion";
 }
 
+/** Small chevron for the sorted column; the state itself is in aria-sort. */
+function SortMark({ dir }: { dir: SortState["dir"] }) {
+  return (
+    <svg
+      className="sort-mark"
+      width="8"
+      height="8"
+      viewBox="0 0 8 8"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d={dir === "asc" ? "M1 5.5 4 2.5l3 3" : "M1 2.5 4 5.5l3-3"} />
+    </svg>
+  );
+}
+
+function capitalize(s: string): string {
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+const SORT_KEYS = Object.keys(SORT_LABELS) as SortKey[];
+
+function FilterGroup({
+  label,
+  options,
+  selected,
+  onToggle,
+}: {
+  label: string;
+  options: FilterOption[];
+  selected: string[];
+  onToggle: (value: string) => void;
+}) {
+  const labelId = useId();
+  if (options.length === 0) return null;
+  return (
+    <div className="filter-group" role="group" aria-labelledby={labelId}>
+      <span className="filter-label" id={labelId}>
+        {label}
+      </span>
+      {options.map((o) => {
+        const on = selected.includes(o.value);
+        return (
+          <button
+            key={o.value}
+            type="button"
+            className="chip"
+            aria-pressed={on}
+            onClick={() => onToggle(o.value)}
+          >
+            <span className="chip-mark" aria-hidden />
+            {o.value}
+            <span className="chip-count">{o.count}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 export function ModelsPanel({ models, onRefresh }: Props) {
   const estimates = useModelEstimates(models);
+  const [table, setTable] = useState<TableState>(loadTableState);
+  const [sortStatus, setSortStatus] = useState("");
+  const sort = table.sort;
+  const options = useMemo(() => filterOptions(models), [models]);
+
+  // A selected option whose models are gone no longer filters anything.
+  const filters = useMemo<FilterState>(() => {
+    if (models.length === 0) return table.filters;
+    const caps = new Set(options.capabilities.map((o) => o.value));
+    const fams = new Set(options.families.map((o) => o.value));
+    return {
+      capabilities: table.filters.capabilities.filter((c) => caps.has(c)),
+      families: table.filters.families.filter((f) => fams.has(f)),
+    };
+  }, [models.length, options, table.filters]);
+  const filtering = hasFilters(filters);
+
+  useEffect(() => {
+    const pruned =
+      filters.capabilities.length !== table.filters.capabilities.length ||
+      filters.families.length !== table.filters.families.length;
+    if (pruned) setTable((prev) => ({ ...prev, filters }));
+  }, [filters, table.filters]);
+
+  useEffect(() => {
+    saveTableState(table);
+  }, [table]);
+
+  const visible = useMemo(
+    () =>
+      sortModels(
+        models.filter((m) => matchesFilters(m, filters)),
+        sort,
+        estimates,
+      ),
+    [models, filters, sort, estimates],
+  );
+
+  const applySort = (next: SortState) => {
+    setTable((prev) => ({ ...prev, sort: next }));
+    setSortStatus(
+      `Sorted by ${SORT_LABELS[next.key]}, ${dirLabel(next.key, next.dir)}`,
+    );
+  };
+
+  const toggleFilter = (group: keyof FilterState, value: string) => {
+    setTable((prev) => {
+      const list = prev.filters[group];
+      const nextList = list.includes(value)
+        ? list.filter((v) => v !== value)
+        : [...list, value];
+      return { ...prev, filters: { ...prev.filters, [group]: nextList } };
+    });
+  };
+
+  const clearFilters = () =>
+    setTable((prev) => ({
+      ...prev,
+      filters: { capabilities: [], families: [] },
+    }));
+
+  const assumptions = estimateAssumptions(estimates);
+
+  const sortHeader = (
+    key: SortKey,
+    label: ReactNode,
+    className?: string,
+    title?: string,
+  ) => {
+    const active = sort.key === key;
+    return (
+      <th
+        scope="col"
+        className={className ? `${className} sortable` : "sortable"}
+        aria-sort={
+          active ? (sort.dir === "asc" ? "ascending" : "descending") : undefined
+        }
+        title={title}
+      >
+        <button
+          type="button"
+          className="sort-button"
+          onClick={() => applySort(nextSort(sort, key))}
+        >
+          {label}
+          {active && <SortMark dir={sort.dir} />}
+        </button>
+      </th>
+    );
+  };
   const totalVram = estimates?.totalVram ?? null;
   const vramHeading = estimates
     ? `Est. VRAM at ${compactContext(estimates.referenceContext)}`
@@ -390,34 +569,121 @@ export function ModelsPanel({ models, onRefresh }: Props) {
         </div>
       )}
 
+      {models.length > 0 && (
+        <div className="model-filters">
+          <FilterGroup
+            label="Capabilities"
+            options={options.capabilities}
+            selected={filters.capabilities}
+            onToggle={(v) => toggleFilter("capabilities", v)}
+          />
+          <FilterGroup
+            label="Family"
+            options={options.families}
+            selected={filters.families}
+            onToggle={(v) => toggleFilter("families", v)}
+          />
+          {filtering && (
+            <div className="filter-summary">
+              <span className="filter-count">
+                {visible.length} of {models.length} models
+              </span>
+              <button
+                type="button"
+                className="btn-secondary btn-sm"
+                onClick={clearFilters}
+              >
+                Clear
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {assumptions && models.length > 0 && (
+        <p className="estimate-note">{assumptions}</p>
+      )}
+
+      <p className="sr-only" role="status">
+        {sortStatus}
+      </p>
+
       {models.length === 0 ? (
         <p className="empty models-empty">No models downloaded yet</p>
+      ) : visible.length === 0 ? (
+        <div className="filter-empty">
+          <p className="empty">No models match these filters.</p>
+          <button
+            type="button"
+            className="btn-secondary btn-sm"
+            onClick={clearFilters}
+          >
+            Clear
+          </button>
+        </div>
       ) : (
         <div className="table-wrap">
+          {/* Shown when the header row cannot show the order: stacked list, or sorted column hidden */}
+          <div className="list-sort">
+            <label className="list-sort-field">
+              <span>Sort by</span>
+              <select
+                value={sort.key}
+                onChange={(e) => {
+                  const key = e.target.value as SortKey;
+                  applySort({ key, dir: defaultDir(key) });
+                }}
+              >
+                {SORT_KEYS.map((k) => (
+                  <option key={k} value={k}>
+                    {SORT_LABELS[k]}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button
+              type="button"
+              className="btn-secondary btn-sm"
+              onClick={() => applySort(nextSort(sort, sort.key))}
+            >
+              <SortMark dir={sort.dir} />
+              {capitalize(dirLabel(sort.key, sort.dir))}
+            </button>
+          </div>
           <table className="models-table">
             <thead>
               <tr>
-                <th>Name</th>
-                <th className="num">Size</th>
-                <th className="p2">Capabilities</th>
-                <th className="p3">Modified</th>
-                <th className="p4">Digest</th>
-                <th className="p4">Format</th>
-                <th className="p3">Family</th>
-                <th className="num">Params</th>
-                <th>Quant</th>
-                <th className="p5">Parent</th>
-                <th className="num">Context</th>
-                <th className="num">Suggested ctx</th>
-                <th className="num">{vramHeading}</th>
-                <th className="num p5">Embedding</th>
-                <th className="col-actions">
+                {sortHeader("name", "Name")}
+                {sortHeader("size", "Size", "num")}
+                <th scope="col" className="p2">
+                  Capabilities
+                </th>
+                {sortHeader("modified", "Modified", "p3")}
+                <th scope="col" className="p4">
+                  Digest
+                </th>
+                <th scope="col" className="p4">
+                  Format
+                </th>
+                {sortHeader("family", "Family", "p3")}
+                {sortHeader("params", "Params", "num")}
+                {sortHeader("quant", "Quant")}
+                <th scope="col" className="p5">
+                  Parent
+                </th>
+                {sortHeader("context", "Context", "num")}
+                {sortHeader("suggested", "Suggested ctx", "num")}
+                {sortHeader("vram", vramHeading, "num", assumptions ?? undefined)}
+                <th scope="col" className="num p5">
+                  Embedding
+                </th>
+                <th scope="col" className="col-actions">
                   <span className="sr-only">Actions</span>
                 </th>
               </tr>
             </thead>
             <tbody>
-              {models.map((m) => {
+              {visible.map((m) => {
                 const d = m.details;
                 const id = localModelId(m);
                 const caps = sortCapabilities(m.capabilities);
@@ -495,7 +761,7 @@ export function ModelsPanel({ models, onRefresh }: Props) {
 
           {/* Narrow cards show the library as a stacked list instead of a scrolling table */}
           <ul className="models-list">
-            {models.map((m) => {
+            {visible.map((m) => {
               const d = m.details;
               const id = localModelId(m);
               const est = estimates?.models[id];
@@ -510,6 +776,12 @@ export function ModelsPanel({ models, onRefresh }: Props) {
                       <dt>Size</dt>
                       <dd>{formatBytes(m.size)}</dd>
                     </div>
+                    {d?.family && (
+                      <div>
+                        <dt>Family</dt>
+                        <dd>{d.family}</dd>
+                      </div>
+                    )}
                     {d?.parameter_size && (
                       <div>
                         <dt>Params</dt>

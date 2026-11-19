@@ -48,6 +48,10 @@ export interface ModelEstimates {
   /** Context that `baseVram` is normally quoted at. */
   referenceContext: number;
   models: Record<string, ModelEstimate>;
+  /** KV cache type the estimates assume; missing means the f16 default. */
+  kvCacheType?: "f16" | "q8_0" | "q4_0";
+  /** Parallel requests the estimates assume; missing means 1. */
+  numParallel?: number;
 }
 
 export interface PullProgress {
