@@ -13,10 +13,23 @@ export function formatBytes(bytes: number): string {
 
 /** The parts of a VRAM estimate, spelled out for a tooltip. */
 export function estimateBreakdown(est: ModelEstimate): string {
-  return (
-    `Weights ${formatBytes(est.weights)} + context ${formatBytes(est.contextMemory)}, ` +
-    `at ${est.context.toLocaleString()} tokens`
-  );
+  const part = (context: number, vram: number) =>
+    `At ${context.toLocaleString()} tokens: weights ${formatBytes(est.weights)} + ` +
+    `context ${formatBytes(vram - est.weights)}`;
+  const parts = [part(est.baseContext, est.baseVram)];
+  if (
+    est.suggestedContext != null &&
+    est.suggestedVram != null &&
+    est.suggestedContext !== est.baseContext
+  ) {
+    parts.push(part(est.suggestedContext, est.suggestedVram));
+  }
+  return parts.join(". ");
+}
+
+/** Context size as a short label: 8192 becomes "8k". */
+export function compactContext(tokens: number): string {
+  return tokens >= 1024 ? `${Math.round(tokens / 1024)}k` : String(tokens);
 }
 
 export function formatRelativeTime(iso: string): string {

@@ -7,6 +7,7 @@ import {
   waitForLocalModel,
 } from "../api/ollama";
 import {
+  compactContext,
   displayValue,
   estimateBreakdown,
   formatBytes,
@@ -57,18 +58,26 @@ function familyExtra(d: ModelDetails | undefined): string | null {
   return extra.length > 0 ? extra.join(", ") : null;
 }
 
-/** Estimated VRAM, as a share of the GPU when its size is known. */
+/** Estimated VRAM at the base context, as a share of the GPU when its size is known. */
 function vramLabel(est: ModelEstimate, totalVram: number | null): string {
-  const size = formatBytes(est.vram);
+  const size = formatBytes(est.baseVram);
   if (totalVram == null || totalVram <= 0) return size;
-  return `${size} · ${Math.round((est.vram / totalVram) * 100)}%`;
+  return `${size} · ${Math.round((est.baseVram / totalVram) * 100)}%`;
 }
 
-/** What the estimate assumes, for rows where it is not the suggested context. */
-function vramNote(est: ModelEstimate): string | null {
-  const context = `${est.context.toLocaleString()} ctx`;
-  if (est.fits === false) return `over GPU at ${context}`;
-  if (est.suggestedContext == null) return `at ${context}`;
+/** Second line of the estimate: memory at the suggested context, or why the first line differs. */
+function vramNote(est: ModelEstimate, referenceContext: number): string | null {
+  if (est.fits === false) return "over GPU";
+  if (
+    est.suggestedContext != null &&
+    est.suggestedVram != null &&
+    est.suggestedContext !== est.baseContext
+  ) {
+    return `${formatBytes(est.suggestedVram)} at ${est.suggestedContext.toLocaleString()}`;
+  }
+  if (est.baseContext !== referenceContext) {
+    return `at ${est.baseContext.toLocaleString()} ctx`;
+  }
   return null;
 }
 
@@ -85,6 +94,11 @@ function suggestionHint(est: ModelEstimate): string {
 export function ModelsPanel({ models, onRefresh }: Props) {
   const estimates = useModelEstimates(models);
   const totalVram = estimates?.totalVram ?? null;
+  const vramHeading = estimates
+    ? `Est. VRAM at ${compactContext(estimates.referenceContext)}`
+    : "Est. VRAM";
+  const noteFor = (est: ModelEstimate | undefined) =>
+    est && estimates ? vramNote(est, estimates.referenceContext) : null;
   const [tag, setTag] = useState("");
   const [hfFiles, setHfFiles] = useState<HfGgufFile[]>([]);
   const [hfQuant, setHfQuant] = useState("");
@@ -395,7 +409,7 @@ export function ModelsPanel({ models, onRefresh }: Props) {
                 <th className="p5">Parent</th>
                 <th className="num">Context</th>
                 <th className="num">Suggested ctx</th>
-                <th className="num">Est. VRAM</th>
+                <th className="num">{vramHeading}</th>
                 <th className="num p5">Embedding</th>
                 <th className="col-actions">
                   <span className="sr-only">Actions</span>
@@ -409,7 +423,7 @@ export function ModelsPanel({ models, onRefresh }: Props) {
                 const caps = sortCapabilities(m.capabilities);
                 const families = familyExtra(d);
                 const est = estimates?.models[id];
-                const note = est ? vramNote(est) : null;
+                const note = noteFor(est);
 
                 return (
                   <tr key={`${id}:${m.digest || m.modified_at}`}>
@@ -485,7 +499,7 @@ export function ModelsPanel({ models, onRefresh }: Props) {
               const d = m.details;
               const id = localModelId(m);
               const est = estimates?.models[id];
-              const note = est ? vramNote(est) : null;
+              const note = noteFor(est);
               return (
                 <li key={`${id}:${m.digest || m.modified_at}`} className="models-list-item">
                   <div className="models-list-name">
@@ -522,7 +536,7 @@ export function ModelsPanel({ models, onRefresh }: Props) {
                     )}
                     {est && (
                       <div>
-                        <dt>Est. VRAM</dt>
+                        <dt>{vramHeading}</dt>
                         <dd className={est.fits === false ? "over" : undefined}>
                           {vramLabel(est, totalVram)}
                           {note && `, ${note}`}

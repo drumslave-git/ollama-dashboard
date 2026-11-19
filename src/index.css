@@ -647,25 +647,25 @@ select {
  * so the table fits instead of scrolling. p5 goes first, p2 last.
  * Thresholds are the table's natural width with that tier still shown.
  */
-@container (max-width: 2041px) {
+@container (max-width: 2077px) {
   .models-table .p5 {
     display: none;
   }
 }
 
-@container (max-width: 1770px) {
+@container (max-width: 1806px) {
   .models-table .p4 {
     display: none;
   }
 }
 
-@container (max-width: 1568px) {
+@container (max-width: 1604px) {
   .models-table .p3 {
     display: none;
   }
 }
 
-@container (max-width: 1287px) {
+@container (max-width: 1323px) {
   .models-table .p2 {
     display: none;
   }
@@ -827,7 +827,7 @@ select {
   margin-top: 8px;
 }
 
-@container (max-width: 1057px) {
+@container (max-width: 1093px) {
   .models-table {
     display: none;
   }

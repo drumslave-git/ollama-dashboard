@@ -32,19 +32,21 @@ export interface LocalModel {
 
 /** Predicted memory use for a downloaded model, from /api/dashboard/estimates. */
 export interface ModelEstimate {
+  weights: number;
+  /** The reference context, or less when the model or the GPU cannot take it. */
+  baseContext: number;
+  baseVram: number;
   /** Largest context that keeps the model fully on the GPU. */
   suggestedContext: number | null;
-  /** Context the memory figures are for. */
-  context: number;
-  vram: number;
-  weights: number;
-  contextMemory: number;
-  /** null when the GPU size is not configured. */
+  suggestedVram: number | null;
+  /** Whether the model fits at the base context; null when the GPU size is not configured. */
   fits: boolean | null;
 }
 
 export interface ModelEstimates {
   totalVram: number | null;
+  /** Context that `baseVram` is normally quoted at. */
+  referenceContext: number;
   models: Record<string, ModelEstimate>;
 }
 

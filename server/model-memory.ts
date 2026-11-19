@@ -11,19 +11,21 @@ interface MemorySpec {
 }
 
 export interface ModelEstimate {
+  weights: number;
+  /** The reference context, or less when the model or the GPU cannot take it. */
+  baseContext: number;
+  baseVram: number;
   /** Largest context that keeps the model fully on the GPU, null if unknown or none fits. */
   suggestedContext: number | null;
-  /** Context the memory figures below are for. */
-  context: number;
-  vram: number;
-  weights: number;
-  contextMemory: number;
-  /** null when the GPU size is not configured. */
+  suggestedVram: number | null;
+  /** Whether the model fits at the base context; null when the GPU size is not configured. */
   fits: boolean | null;
 }
 
 export interface ModelEstimates {
   totalVram: number | null;
+  /** Context that `baseVram` is normally quoted at. */
+  referenceContext: number;
   models: Record<string, ModelEstimate>;
 }
 
@@ -37,8 +39,9 @@ const BATCH_TOKENS = 512;
  * reported weights plus KV cache and under 0.1 GiB more (Ollama 0.40.16).
  */
 const VRAM_BUDGET = 0.9;
-const MIN_CONTEXT = 4096;
-/** Context to quote memory at when there is no GPU size to fit against. */
+/** Suggestions move in steps of this many tokens; it is also the smallest one offered. */
+const CONTEXT_STEP = 4096;
+/** A typical working context, so memory figures compare across models. */
 const REFERENCE_CONTEXT = 8192;
 const SHOW_CONCURRENCY = 4;
 
@@ -138,12 +141,17 @@ function contextMemory(spec: MemorySpec, context: number): number {
   );
 }
 
-/** Powers of two up to the model's limit, plus the limit itself. */
-function contextSteps(maxContext: number): number[] {
-  const steps: number[] = [];
-  for (let c = MIN_CONTEXT; c < maxContext; c *= 2) steps.push(c);
-  steps.push(maxContext);
-  return steps;
+/** The model's limit if it fits, else the largest multiple of CONTEXT_STEP that does. */
+function largestFittingContext(
+  maxContext: number,
+  fits: (context: number) => boolean,
+): number | null {
+  if (fits(maxContext)) return maxContext;
+  const below = Math.floor((maxContext - 1) / CONTEXT_STEP) * CONTEXT_STEP;
+  for (let c = below; c >= CONTEXT_STEP; c -= CONTEXT_STEP) {
+    if (fits(c)) return c;
+  }
+  return null;
 }
 
 export function estimateModel(
@@ -151,36 +159,32 @@ export function estimateModel(
   weights: number,
   totalVram: number | null,
 ): ModelEstimate {
-  const at = (
-    context: number,
-    suggestedContext: number | null,
-    fits: boolean | null,
-  ): ModelEstimate => {
-    const ctxBytes = contextMemory(spec, context);
-    return {
-      suggestedContext,
-      context,
-      vram: weights + ctxBytes,
-      weights,
-      contextMemory: ctxBytes,
-      fits,
-    };
-  };
+  const vramAt = (context: number) => weights + contextMemory(spec, context);
+  const budget = totalVram != null ? totalVram * VRAM_BUDGET : null;
 
-  if (totalVram == null || spec.maxContext == null) {
-    const context = Math.min(REFERENCE_CONTEXT, spec.maxContext ?? REFERENCE_CONTEXT);
-    const estimate = at(context, null, null);
-    if (totalVram != null) estimate.fits = estimate.vram <= totalVram * VRAM_BUDGET;
-    return estimate;
+  let suggestedContext: number | null = null;
+  if (budget != null && spec.maxContext != null) {
+    suggestedContext = largestFittingContext(
+      spec.maxContext,
+      (c) => vramAt(c) <= budget,
+    );
   }
 
-  const budget = totalVram * VRAM_BUDGET;
-  const steps = contextSteps(spec.maxContext);
-  const fitting = steps.filter(
-    (c) => weights + contextMemory(spec, c) <= budget,
+  const baseContext = Math.min(
+    REFERENCE_CONTEXT,
+    spec.maxContext ?? REFERENCE_CONTEXT,
+    suggestedContext ?? REFERENCE_CONTEXT,
   );
-  const best = fitting.at(-1);
-  return best != null ? at(best, best, true) : at(steps[0], null, false);
+  const baseVram = vramAt(baseContext);
+
+  return {
+    weights,
+    baseContext,
+    baseVram,
+    suggestedContext,
+    suggestedVram: suggestedContext != null ? vramAt(suggestedContext) : null,
+    fits: budget != null ? baseVram <= budget : null,
+  };
 }
 
 /** Specs only change when the model does, so they are kept per digest. */
@@ -228,5 +232,5 @@ export async function getModelEstimates(ollamaHost: string): Promise<ModelEstima
   };
   await Promise.all(Array.from({ length: SHOW_CONCURRENCY }, worker));
 
-  return { totalVram, models };
+  return { totalVram, referenceContext: REFERENCE_CONTEXT, models };
 }
