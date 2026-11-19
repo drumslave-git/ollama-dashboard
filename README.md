@@ -14,6 +14,7 @@ Web UI to monitor and manage a remote or local [Ollama](https://ollama.com) inst
   - Update a single model (re-pull)
   - Bulk update (re-pull all)
   - Delete with confirmation
+- **Light and dark theme** — follows the system setting; the Auto / Light / Dark switch in the header pins one and remembers it
 
 ## Stack
 

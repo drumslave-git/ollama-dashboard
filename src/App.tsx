@@ -7,6 +7,7 @@ import {
 } from "./api/ollama";
 import { ActiveModels } from "./components/ActiveModels";
 import { ModelsPanel } from "./components/ModelsPanel";
+import { ThemeSwitch } from "./components/ThemeSwitch";
 import { VramSummary } from "./components/VramSummary";
 import { usePolling } from "./hooks/usePolling";
 import { modelColors } from "./lib/memoryMap";
@@ -61,14 +62,17 @@ export default function App() {
           <h1>Ollama Dashboard</h1>
           {summary && <p>{summary}</p>}
         </div>
-        <span className={`status ${connected ? "ok" : "err"}`} role="status">
-          <span className="status-led" aria-hidden />
-          {connected
-            ? version
-              ? `Ollama ${version}`
-              : "Connected"
-            : "Disconnected"}
-        </span>
+        <div className="header-tools">
+          <span className={`status ${connected ? "ok" : "err"}`} role="status">
+            <span className="status-led" aria-hidden />
+            {connected
+              ? version
+                ? `Ollama ${version}`
+                : "Connected"
+              : "Disconnected"}
+          </span>
+          <ThemeSwitch />
+        </div>
       </header>
 
       {(running.error || local.error) && (

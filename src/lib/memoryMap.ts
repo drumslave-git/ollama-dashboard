@@ -2,8 +2,8 @@ import type { RunningModel } from "../types/ollama";
 
 const GiB = 1024 ** 3;
 
-/** Model colors in the VRAM memory map. The largest model takes the accent. */
-const SERIES = ["#f0a43a", "#8ab89c", "#86a0c8", "#c78f7f", "#bfb08a"];
+/** Model colors in the VRAM memory map, as theme tokens. The largest model takes the accent. */
+const SERIES = [1, 2, 3, 4, 5].map((n) => `var(--series-${n})`);
 
 /** Block size that draws the GPU in at most 64 blocks (24 GB → 0.5 GB blocks). */
 export function memoryBlockSize(total: number): number {
